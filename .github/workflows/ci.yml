@@ -1,0 +1,67 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  # Run verification first (type checking, tests, linting)
+  verify:
+    name: Verify Code Quality
+    uses: ./.github/workflows/verify.yml
+    with:
+      node-version: '18'
+      package-manager: 'npm'  # Change to 'yarn' if you prefer yarn
+      working-directory: '.'
+      typecheck-script: 'typecheck'
+      # skip-tests: true      # Uncomment to skip tests
+      # skip-lint: true       # Uncomment to skip linting
+
+  # Run build after verification passes
+  build:
+    name: Build Application
+    needs: verify
+    if: success()
+    uses: ./.github/workflows/build.yml
+    with:
+      node-version: '18'
+      package-manager: 'npm'  # Change to 'yarn' if you prefer yarn
+      working-directory: '.'
+      build-script: 'build'
+      artifact-name: 'typescript-build'
+      artifact-path: 'dist'
+
+  # Matrix testing with multiple Node versions and package managers
+  matrix-test:
+    name: Matrix Testing
+    if: github.event_name == 'pull_request'
+    strategy:
+      matrix:
+        node-version: ['16', '18', '20']
+        package-manager: ['npm', 'yarn']
+        exclude:
+          # Exclude yarn with Node 16 to reduce matrix size
+          - node-version: '16'
+            package-manager: 'yarn'
+    uses: ./.github/workflows/verify.yml
+    with:
+      node-version: ${{ matrix.node-version }}
+      package-manager: ${{ matrix.package-manager }}
+      skip-tests: false
+      skip-lint: true  # Skip lint for matrix to save time
+
+  # Example of building for multiple environments
+  build-matrix:
+    name: Build Matrix
+    needs: verify
+    if: github.ref == 'refs/heads/main'
+    strategy:
+      matrix:
+        package-manager: ['npm', 'yarn']
+    uses: ./.github/workflows/build.yml
+    with:
+      node-version: '18'
+      package-manager: ${{ matrix.package-manager }}
+      artifact-name: 'build-${{ matrix.package-manager }}'
