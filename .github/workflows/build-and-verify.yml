@@ -1,0 +1,202 @@
+name: Build and Verify Workflow
+
+on:
+  workflow_call:
+    inputs:
+      node-version-file:
+        description: 'package.json file'
+        required: true
+        type: string
+        default: './package.json'
+      package-manager:
+        description: 'Package manager to use (npm or yarn)'
+        required: false
+        type: string
+        default: 'npm'
+      working-directory:
+        description: 'Working directory for the build'
+        required: false
+        type: string
+        default: '.'
+      build-script:
+        description: 'Build script to run'
+        required: false
+        type: string
+        default: 'build'
+      test-script:
+        description: 'Test script to run'
+        required: false
+        type: string
+        default: 'test'
+      build-matrix:
+        type: string
+        required: false
+        description: 'JSON array of objects: [{ "platform": "...", "arch": "..." }] for build combinations.'
+      test-matrix:
+        type: string
+        required: false
+        description: 'JSON array of objects: [{ "platform": "...", "arch": "..." }] for test combinations.'
+    # outputs:
+    #   build-success:
+    #     description: 'Whether the build was successful'
+    #     value: ${{ jobs.build.outputs.build-success }}
+    #   build-matrix-used:
+    #     description: 'The build matrix configuration used'
+    #     value: ${{ jobs.matrix-config.outputs.build-matrix }}
+    #   test-matrix-used:
+    #     description: 'The test matrix configuration used'
+    #     value: ${{ jobs.matrix-config.outputs.test-matrix }}
+
+jobs:
+  configure-ci:
+    runs-on: ubuntu-latest
+    outputs:
+      working-dir: ${{ steps.get-working-dir.outputs.dir }}
+      has-e2e-tests: ${{ steps.check-e2e-test-script.outputs.has-e2e-script }}
+    steps:
+      - name: Get working directory
+        id: get-working-dir
+        shell: bash
+        run: |
+          if [ -z "${{ inputs.working-directory }}" ]; then
+            echo "dir=./" >> "$GITHUB_OUTPUT"
+          else
+            echo "dir=${{ inputs.working-directory }}" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Check for E2E Test Script
+        id: check-e2e-test-script
+        run: |
+          if grep -qE '"test:e2e"\s*:' package.json; then
+            echo "has-e2e-script=true" >> "$GITHUB_OUTPUT"
+          fi
+  build:
+    needs: [ configure-ci ]
+    name: 'Build (${{ matrix.platform }}, ${{ matrix.arch }})'
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(inputs.test-matrix != '' && inputs.test-matrix || '[{"platform":"windows-2022","arch":"amd64"},{"platform":"windows-2022","arch":"arm64"},{"platform":"ubuntu-24.04","arch":"amd64"},{"platform":"ubuntu-24.04","arch":"arm64"},{"platform":"macos-14","arch":"amd64"},{"platform":"macos-14","arch":"arm64"}]') }}
+    runs-on: ${{ matrix.platform }}
+    # outputs:
+    #   build-success: ${{ steps.build.outcome == 'success' }}
+
+    steps:
+      - run: git config --global core.autocrlf false
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: ${{ inputs.node-version-file }}
+          registry-url: https://npm.pkg.github.com
+          package-manager-cache: false
+          always-auth: true
+
+      - name: Install dependencies
+        working-directory: ${{ inputs.working-directory }}
+        shell: bash
+        run: |
+          if [ "${{ inputs.package-manager }}" = "npm" ]; then
+            npm ci
+          else
+            yarn --frozen-lockfile --prefer-offline --ignore-scripts
+          fi
+
+      - name: Remove badges
+        if: runner.os == 'Linux'
+        run: |
+          sed -i "/https:\/\/qlty\.sh\/gh/d" README.md
+          sed -i "/https:\/\/securityscorecards\.dev\/viewer/d" README.md
+
+      - name: Run build
+        id: build
+        working-directory: ${{ inputs.working-directory }}
+        shell: bash
+        run: |
+          if [ "${{ inputs.package-manager }}" = "npm" ]; then
+            npm run ${{ inputs.build-script }}
+          else
+            yarn ${{ inputs.build-script }}
+          fi
+
+      # - name: Upload dist
+      #   if: runner.os == 'Linux'
+      #   uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      #   with:
+      #     name: dist
+      #     path: |
+      #       ./README.md
+      #       ./package.json
+      #       ./dist
+      #    retention-days: 1
+
+      # - name: Upload package
+      #   uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      #   with:
+      #     name: vsix-package-${{ matrix.platform }}-${{ matrix.arch }}
+      #     path: ./*.vsix
+      #     retention-days: 1
+
+  test:
+    needs: [ configure-ci ]
+    name: 'Test (${{ matrix.platform }}, ${{ matrix.arch }})'
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(inputs.test-matrix != '' && inputs.test-matrix || '[{"platform":"windows-2022","arch":"amd64"},{"platform":"windows-2022","arch":"arm64"},{"platform":"ubuntu-24.04","arch":"amd64"},{"platform":"ubuntu-24.04","arch":"arm64"},{"platform":"macos-14","arch":"amd64"},{"platform":"macos-14","arch":"arm64"}]') }}
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - run: git config --global core.autocrlf false
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: ${{ inputs.node-version-file }}
+          registry-url: https://npm.pkg.github.com
+          package-manager-cache: false
+          always-auth: true
+
+      - name: Install dependencies
+        working-directory: ${{ inputs.working-directory }}
+        shell: bash
+        run: |
+          if [ "${{ inputs.package-manager }}" = "npm" ]; then
+            npm ci
+          else
+            yarn --frozen-lockfile --prefer-offline --ignore-scripts
+          fi
+
+      - name: Run tests
+        working-directory: ${{ inputs.working-directory }}
+        shell: bash
+        run: |
+          if [ "${{ inputs.package-manager }}" = "npm" ]; then
+            npm run ${{ inputs.test-script }}
+          else
+            yarn ${{ inputs.test-script }}
+          fi
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: runner.os == 'Linux'
+        with:
+          name: test-coverage
+          path: ./coverage
+
+      # - name: End-to-end Test
+      #   if: needs.configure-ci.outputs.has-e2e-tests == 'true'
+      #   run: ${{ matrix.e2e-command }}
+
+      # - name: Upload screenshots as artifacts
+      #   uses: actions/upload-artifact@v4.6.0
+      #   if: always()
+      #   with:
+      #     name: e2e-test-screenshots-${{ matrix.os }}
+      #     path: ./e2e-screenshots/*.png
+      #     if-no-files-found: ignore

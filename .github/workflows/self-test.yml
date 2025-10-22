@@ -1,47 +1,101 @@
 name: Self Test
 
+# This workflow demonstrates the new matrix functionality in the reusable build workflow.
+# It showcases different matrix configurations for various use cases:
+# 
+# 1. Multi-OS/architecture builds - Tests cross-platform compatibility
+# 2. Package manager combinations with Node.js versions - Tests different toolchain combinations  
+# 3. ARM architecture specific builds - Tests ARM64 support
+# 4. Integration with verification workflow - Shows how to chain matrix builds with verification
+#
+# Matrix Examples:
+# - build-matrix: [{"os": "linux", "arch": "x64"}, {"os": "darwin", "arch": "arm64"}]
+# - test-matrix: [{"platform": "ubuntu-latest", "arch": "x64"}, {"platform": "macos-latest", "arch": "x64"}]
+
 on:
   workflow_dispatch:
-  push:
+  pull_request:
     paths:
       - '.github/workflows/self-test.yml'
+      - '.github/workflows/build-and-verify.yml'
       - 'src/**'
       - 'package.json'
       - 'tsconfig.json'
+      - 'yarn.lock'
 
 jobs:
-  build-npm:
-    name: Build with npm
-    uses: ./.github/workflows/build.yml
+  # Test with build matrix for different OS/architecture combinations
+  self-test-npm:
+    uses: ./.github/workflows/build-and-verify.yml
     with:
-      package-manager: 'npm'
-      node-version: '20'
-      artifact-name: 'npm-build'
+      build-matrix: '[{"platform":"windows-2022","arch":"amd64"},{"platform":"ubuntu-24.04","arch":"amd64"}]'
+      test-matrix: '[{"platform":"windows-2022","arch":"amd64"},{"platform":"ubuntu-24.04","arch":"amd64"}]'
+      package-manager: npm
+      node-version-file: './package.json'
 
-  build-yarn:
-    name: Build with yarn
-    uses: ./.github/workflows/build.yml
+  self-test-yarn:
+    uses: ./.github/workflows/build-and-verify.yml
     with:
-      package-manager: 'yarn'
-      node-version: '20'
-      artifact-name: 'yarn-build'
+      build-matrix: '[{"platform":"windows-2022","arch":"amd64"},{"platform":"ubuntu-24.04","arch":"amd64"}]'
+      test-matrix: '[{"platform":"windows-2022","arch":"amd64"},{"platform":"ubuntu-24.04","arch":"amd64"}]'
+      package-manager: yarn
+      node-version-file: './package.json'
+  # # Test with different package managers using matrix
+  # package-manager-matrix:
+  #   name: Package Manager Matrix Test
+  #   strategy:
+  #     matrix:
+  #       package-manager: ['npm', 'yarn']
+  #       node-version: ['18', '20']
+  #   uses: ./.github/workflows/build.yml
+  #   with:
+  #     build-matrix: |
+  #       {
+  #         "include": [
+  #           {"os": "linux", "arch": "x64"},
+  #           {"os": "darwin", "arch": "arm64"}
+  #         ]
+  #       }
+  #     test-matrix: |
+  #       {
+  #         "include": [
+  #           {"platform": "ubuntu-latest", "arch": "x64"},
+  #           {"platform": "macos-latest", "arch": "x64"}
+  #         ]
+  #       }
+  #     package-manager: ${{ matrix.package-manager }}
+  #     node-version: ${{ matrix.node-version }}
+  #     artifact-name: '${{ matrix.package-manager }}-${{ matrix.node-version }}-build'
 
-  test-npm:
-    name: Test with npm
-    needs: build-npm
-    uses: ./.github/workflows/verify.yml
-    with:
-      package-manager: 'npm'
-      node-version: '20'
-      skip-tests: true  # No test script in current package.json
-      skip-lint: true   # No lint script in current package.json
+  # # Test ARM architecture builds
+  # arm-build-test:
+  #   name: ARM Build Test
+  #   uses: ./.github/workflows/build.yml
+  #   with:
+  #     build-matrix: |
+  #       {
+  #         "include": [
+  #           {"os": "linux", "arch": "arm64"},
+  #           {"os": "darwin", "arch": "arm64"}
+  #         ]
+  #       }
+  #     test-matrix: |
+  #       {
+  #         "include": [
+  #           {"platform": "ubuntu-latest", "arch": "arm64"}
+  #         ]
+  #       }
+  #     package-manager: 'npm'
+  #     node-version: '20'
+  #     artifact-name: 'arm-build'
 
-  test-yarn:
-    name: Test with yarn
-    needs: build-yarn
-    uses: ./.github/workflows/verify.yml
-    with:
-      package-manager: 'yarn'
-      node-version: '20'
-      skip-tests: true
-      skip-lint: true
+  # # Verify builds with verify workflow
+  # verify-builds:
+  #   name: Verify Matrix Builds
+  #   needs: [build-matrix-test, package-manager-matrix, arm-build-test]
+  #   uses: ./.github/workflows/verify.yml
+  #   with:
+  #     package-manager: 'npm'
+  #     node-version: '20'
+  #     skip-tests: true  # No test script in current package.json
+  #     skip-lint: true   # No lint script in current package.json

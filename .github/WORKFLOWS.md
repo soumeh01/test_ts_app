@@ -18,12 +18,16 @@ Builds your TypeScript project and uploads build artifacts.
 | `build-script` | Build script name | No | `'build'` | string |
 | `artifact-name` | Build artifact name | No | `'build-output'` | string |
 | `artifact-path` | Path to upload as artifact | No | `'dist'` | string |
+| `build-matrix` | JSON array of build combinations | No | `null` | string |
+| `test-matrix` | JSON array of test combinations | No | `null` | string |
 
 #### Outputs
 
 | Output | Description |
 |--------|-------------|
 | `build-success` | Whether the build was successful |
+| `build-matrix-used` | The build matrix configuration used |
+| `test-matrix-used` | The test matrix configuration used |
 
 ### 2. Verify Workflow (`verify.yml`)
 
@@ -60,38 +64,22 @@ name: CI
 on: [push, pull_request]
 
 jobs:
-  verify:
-    uses: ./.github/workflows/verify.yml
-    with:
-      package-manager: 'npm'
-      node-version: '20'
-
   build:
-    needs: verify
     uses: ./.github/workflows/build.yml
     with:
       package-manager: 'npm'
-      node-version: '20'
+      node-version-file: 'package.json'
 ```
 
 ### With Yarn
 
 ```yaml
 jobs:
-  verify-yarn:
-    uses: ./.github/workflows/verify.yml
-    with:
-      package-manager: 'yarn'
-      node-version: '20'
-      skip-tests: false
-      skip-lint: false
-
   build-yarn:
-    needs: verify-yarn
     uses: ./.github/workflows/build.yml
     with:
       package-manager: 'yarn'
-      node-version: '20'
+      node-version-file: 'package.json'
       artifact-name: 'my-app-dist'
 ```
 
@@ -109,6 +97,95 @@ jobs:
       node-version: ${{ matrix.node-version }}
       package-manager: ${{ matrix.package-manager }}
 ```
+
+### Custom Build and Test Matrices
+
+```yaml
+jobs:
+  multi-target-build:
+    uses: ./.github/workflows/build.yml
+    with:
+      build-matrix: |
+        {
+          "include": [
+            {"os": "linux", "arch": "x64"},
+            {"os": "linux", "arch": "arm64"},
+            {"os": "darwin", "arch": "x64"},
+            {"os": "windows", "arch": "x64"}
+          ]
+        }
+      test-matrix: |
+        {
+          "include": [
+            {"platform": "ubuntu-latest", "arch": "x64"},
+            {"platform": "macos-latest", "arch": "x64"},
+            {"platform": "windows-latest", "arch": "x64"}
+          ]
+        }
+```
+
+### Cross-Platform Testing
+
+```yaml
+jobs:
+  cross-platform-test:
+    uses: ./.github/workflows/build.yml
+    with:
+      test-matrix: |
+        {
+          "include": [
+            {"platform": "ubuntu-20.04", "arch": "x64"},
+            {"platform": "ubuntu-22.04", "arch": "x64"},
+            {"platform": "macos-12", "arch": "x64"},
+            {"platform": "macos-13", "arch": "x64"},
+            {"platform": "windows-2019", "arch": "x64"},
+            {"platform": "windows-2022", "arch": "x64"}
+          ]
+        }
+```
+
+## Matrix Configuration
+
+The build workflow supports custom matrices for both build targets and test environments.
+
+### Build Matrix Format
+
+The `build-matrix` input accepts a JSON string with the following structure:
+
+```json
+{
+  "include": [
+    {"os": "linux", "arch": "x64"},
+    {"os": "darwin", "arch": "arm64"}
+  ]
+}
+```
+
+- `os`: Target operating system (e.g., linux, darwin, windows)
+- `arch`: Target architecture (e.g., x64, arm64)
+
+### Test Matrix Format
+
+The `test-matrix` input accepts a JSON string with the following structure:
+
+```json
+{
+  "include": [
+    {"platform": "ubuntu-latest", "arch": "x64"},
+    {"platform": "macos-latest", "arch": "x64"}
+  ]
+}
+```
+
+- `platform`: GitHub Actions runner (e.g., ubuntu-latest, macos-latest, windows-latest)
+- `arch`: Runner architecture (e.g., x64, arm64)
+
+### Default Matrices
+
+If not specified, the workflow uses these defaults:
+
+- **Build Matrix**: `[{"os": "linux", "arch": "x64"}]`
+- **Test Matrix**: `[{"platform": "ubuntu-latest", "arch": "x64"}]`
 
 ### Monorepo Usage
 
@@ -170,6 +247,7 @@ The workflows intelligently handle different lockfile scenarios:
 - ✅ **Rich Summary Reports**: Detailed workflow summaries in GitHub UI
 - ✅ **Monorepo Ready**: Configurable working directories
 - ✅ **Matrix Testing**: Easy setup for testing across environments
+- ✅ **Custom Build/Test Matrices**: Configure multi-target builds and cross-platform testing
 - ✅ **Dependency Caching**: Automatic npm/yarn cache optimization when lockfiles exist
 
 ## CI/CD Pipeline Example
