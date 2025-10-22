@@ -1,16 +1,34 @@
-name: Test Current Code
+name: Self Test
 
 on:
-  workflow_dispatch:  # Manual trigger for testing
+  workflow_dispatch:
   push:
     paths:
+      - '.github/workflows/self-test.yml'
       - 'src/**'
       - 'package.json'
       - 'tsconfig.json'
 
 jobs:
+  build-npm:
+    name: Build with npm
+    uses: ./.github/workflows/build.yml
+    with:
+      package-manager: 'npm'
+      node-version: '20'
+      artifact-name: 'npm-build'
+
+  build-yarn:
+    name: Build with yarn
+    uses: ./.github/workflows/build.yml
+    with:
+      package-manager: 'yarn'
+      node-version: '20'
+      artifact-name: 'yarn-build'
+
   test-npm:
     name: Test with npm
+    needs: build-npm
     uses: ./.github/workflows/verify.yml
     with:
       package-manager: 'npm'
@@ -20,27 +38,10 @@ jobs:
 
   test-yarn:
     name: Test with yarn
+    needs: build-yarn
     uses: ./.github/workflows/verify.yml
     with:
       package-manager: 'yarn'
       node-version: '20'
       skip-tests: true
       skip-lint: true
-
-  build-npm:
-    name: Build with npm
-    needs: test-npm
-    uses: ./.github/workflows/build.yml
-    with:
-      package-manager: 'npm'
-      node-version: '20'
-      artifact-name: 'npm-build'
-
-  build-yarn:
-    name: Build with yarn
-    needs: test-yarn
-    uses: ./.github/workflows/build.yml
-    with:
-      package-manager: 'yarn'
-      node-version: '20'
-      artifact-name: 'yarn-build'
