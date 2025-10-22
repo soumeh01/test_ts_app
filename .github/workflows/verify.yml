@@ -7,7 +7,7 @@ on:
         description: 'Node.js version to use'
         required: false
         type: string
-        default: '18'
+        default: '20'
       package-manager:
         description: 'Package manager to use (npm or yarn)'
         required: false
@@ -66,21 +66,59 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Determine cache strategy
+        id: cache-strategy
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          if [ "${{ inputs.package-manager }}" = "npm" ] && [ -f "package-lock.json" ]; then
+            echo "cache-type=npm" >> $GITHUB_OUTPUT
+          elif [ "${{ inputs.package-manager }}" = "yarn" ] && [ -f "yarn.lock" ]; then
+            echo "cache-type=yarn" >> $GITHUB_OUTPUT
+          else
+            echo "cache-type=" >> $GITHUB_OUTPUT
+            echo "⚠️ No lockfile found for ${{ inputs.package-manager }}, caching disabled"
+          fi
+
+      - name: Setup Node.js (with cache)
+        if: steps.cache-strategy.outputs.cache-type != ''
         uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.node-version }}
-          cache: ${{ inputs.package-manager }}
+          cache: ${{ steps.cache-strategy.outputs.cache-type }}
+
+      - name: Setup Node.js (without cache)
+        if: steps.cache-strategy.outputs.cache-type == ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
 
       - name: Install dependencies (npm)
         if: inputs.package-manager == 'npm'
         working-directory: ${{ inputs.working-directory }}
         run: npm ci
 
-      - name: Install dependencies (yarn)
+      - name: Check for yarn.lock
         if: inputs.package-manager == 'yarn'
+        id: yarn-lock-check
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          if [ -f "yarn.lock" ]; then
+            echo "yarn-lock-exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "yarn-lock-exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install dependencies (yarn with lockfile)
+        if: inputs.package-manager == 'yarn' && steps.yarn-lock-check.outputs.yarn-lock-exists == 'true'
         working-directory: ${{ inputs.working-directory }}
         run: yarn install --frozen-lockfile
+
+      - name: Install dependencies (yarn without lockfile)
+        if: inputs.package-manager == 'yarn' && steps.yarn-lock-check.outputs.yarn-lock-exists == 'false'
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          echo "⚠️ No yarn.lock found. Installing dependencies and creating lockfile..."
+          yarn install
 
       - name: Run type checking
         id: typecheck
