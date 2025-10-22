@@ -14,7 +14,7 @@ jobs:
     uses: ./.github/workflows/verify.yml
     with:
       package-manager: 'npm'
-      node-version: '18'
+      node-version: '20'
       skip-tests: true  # No test script in current package.json
       skip-lint: true   # No lint script in current package.json
 
@@ -23,7 +23,7 @@ jobs:
     uses: ./.github/workflows/verify.yml
     with:
       package-manager: 'yarn'
-      node-version: '18'
+      node-version: '20'
       skip-tests: true
       skip-lint: true
 
@@ -33,7 +33,7 @@ jobs:
     uses: ./.github/workflows/build.yml
     with:
       package-manager: 'npm'
-      node-version: '18'
+      node-version: '20'
       artifact-name: 'npm-build'
 
   build-yarn:
@@ -42,5 +42,5 @@ jobs:
     uses: ./.github/workflows/build.yml
     with:
       package-manager: 'yarn'
-      node-version: '18'
+      node-version: '20'
       artifact-name: 'yarn-build'

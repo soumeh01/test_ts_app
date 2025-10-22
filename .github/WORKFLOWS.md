@@ -12,7 +12,7 @@ Builds your TypeScript project and uploads build artifacts.
 
 | Input | Description | Required | Default | Type |
 |-------|-------------|----------|---------|------|
-| `node-version` | Node.js version to use | No | `'18'` | string |
+| `node-version` | Node.js version to use | No | `'20'` | string |
 | `package-manager` | Package manager (npm/yarn) | No | `'npm'` | string |
 | `working-directory` | Working directory for build | No | `'.'` | string |
 | `build-script` | Build script name | No | `'build'` | string |
@@ -33,7 +33,7 @@ Runs type checking, tests, and linting for code quality verification.
 
 | Input | Description | Required | Default | Type |
 |-------|-------------|----------|---------|------|
-| `node-version` | Node.js version to use | No | `'18'` | string |
+| `node-version` | Node.js version to use | No | `'20'` | string |
 | `package-manager` | Package manager (npm/yarn) | No | `'npm'` | string |
 | `working-directory` | Working directory | No | `'.'` | string |
 | `typecheck-script` | TypeScript checking script | No | `'typecheck'` | string |
@@ -64,14 +64,14 @@ jobs:
     uses: ./.github/workflows/verify.yml
     with:
       package-manager: 'npm'
-      node-version: '18'
+      node-version: '20'
 
   build:
     needs: verify
     uses: ./.github/workflows/build.yml
     with:
       package-manager: 'npm'
-      node-version: '18'
+      node-version: '20'
 ```
 
 ### With Yarn
@@ -145,16 +145,32 @@ For the workflows to work properly, ensure your `package.json` includes these sc
 
 The workflows will gracefully handle missing optional scripts (test, lint, clean).
 
+## Lockfile Handling
+
+The workflows intelligently handle different lockfile scenarios:
+
+### When using npm:
+- ✅ **With package-lock.json**: Uses `npm ci` for fast, reproducible installs with caching
+- ⚠️ **Without package-lock.json**: Falls back to `npm install` without caching
+
+### When using yarn:
+- ✅ **With yarn.lock**: Uses `yarn install --frozen-lockfile` for reproducible installs with caching
+- ⚠️ **Without yarn.lock**: Uses `yarn install` to create lockfile, caching disabled
+
+**Recommendation**: Always commit your lockfiles (`package-lock.json` or `yarn.lock`) for optimal CI performance and reproducible builds.
+
 ## Features
 
 - ✅ **Dual Package Manager Support**: Works with both npm and yarn
+- ✅ **Lockfile Flexibility**: Handles missing yarn.lock/package-lock.json gracefully
+- ✅ **Smart Caching**: Automatic cache detection based on available lockfiles
 - ✅ **Configurable Node.js Versions**: Support for multiple Node versions
 - ✅ **Build Artifacts**: Automatic artifact upload and retention
 - ✅ **Graceful Script Handling**: Safely handles missing optional scripts
 - ✅ **Rich Summary Reports**: Detailed workflow summaries in GitHub UI
 - ✅ **Monorepo Ready**: Configurable working directories
 - ✅ **Matrix Testing**: Easy setup for testing across environments
-- ✅ **Dependency Caching**: Automatic npm/yarn cache optimization
+- ✅ **Dependency Caching**: Automatic npm/yarn cache optimization when lockfiles exist
 
 ## CI/CD Pipeline Example
 
