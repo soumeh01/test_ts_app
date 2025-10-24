@@ -106,7 +106,6 @@ jobs:
           fi
 
       - name: Remove badges
-        if: runner.os == 'Linux'
         run: |
           sed -i "/https:\/\/qlty\.sh\/gh/d" README.md
           sed -i "/https:\/\/securityscorecards\.dev\/viewer/d" README.md
@@ -122,23 +121,34 @@ jobs:
             yarn ${{ inputs.build-script }}
           fi
 
-      # - name: Upload dist
-      #   if: runner.os == 'Linux'
-      #   uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-      #   with:
-      #     name: dist
-      #     path: |
-      #       ./README.md
-      #       ./package.json
-      #       ./dist
-      #    retention-days: 1
+      - name: Upload dist
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dist-${{ inputs.package-manager }}
+          path: |
+            ./README.md
+            ./package.json
+            ./dist
+          retention-days: 1
 
-      # - name: Upload package
-      #   uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-      #   with:
-      #     name: vsix-package-${{ matrix.platform }}-${{ matrix.arch }}
-      #     path: ./*.vsix
-      #     retention-days: 1
+      - name: Create package
+        working-directory: ${{ inputs.working-directory }}
+        shell: bash
+        run: |
+          if [ "${{ inputs.package-manager }}" = "npm" ]; then
+            npm run package
+          else
+            yarn package
+          fi
+
+      - name: Upload package
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: vsix-package-${{ inputs.package-manager }}-${{ matrix.platform }}-${{ matrix.arch }}
+          path: ./*.vsix
+          retention-days: 1
 
   test:
     needs: [ configure-ci ]
@@ -186,7 +196,7 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: runner.os == 'Linux'
         with:
-          name: test-coverage
+          name: test-coverage-${{ inputs.package-manager }}
           path: ./coverage
 
       # - name: End-to-end Test
