@@ -2,6 +2,10 @@ name: Build and Verify Workflow
 
 on:
   workflow_call:
+    secrets:
+      QLTY_COVERAGE_TOKEN:
+        required: false
+        description: This secret is needed for Qlty coverage upload if enabled.
     inputs:
       node-version-file:
         description: 'package.json file'
@@ -36,6 +40,11 @@ on:
         type: string
         required: false
         description: 'JSON array of objects: [{ "platform": "...", "arch": "..." }] for test combinations.'
+      enable-qlty:
+        type: boolean
+        required: false
+        default: false
+        description: If true, coverage reports are uploaded to Qlty. Requires QLTY_COVERAGE_TOKEN secret.
     # outputs:
     #   build-success:
     #     description: 'Whether the build was successful'
@@ -47,6 +56,10 @@ on:
     #     description: 'The test matrix configuration used'
     #     value: ${{ jobs.matrix-config.outputs.test-matrix }}
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   configure-ci:
     runs-on: ubuntu-latest
@@ -54,9 +67,13 @@ jobs:
       working-dir: ${{ steps.get-working-dir.outputs.dir }}
       has-e2e-tests: ${{ steps.check-e2e-test-script.outputs.has-e2e-script }}
     steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
+        with:
+          egress-policy: audit
+
       - name: Get working directory
         id: get-working-dir
-        shell: bash
         run: |
           if [ -z "${{ inputs.working-directory }}" ]; then
             echo "dir=./" >> "$GITHUB_OUTPUT"
@@ -69,6 +86,7 @@ jobs:
           if grep -qE '"test:e2e"\s*:' package.json; then
             echo "has-e2e-script=true" >> "$GITHUB_OUTPUT"
           fi
+
   build:
     needs: [ configure-ci ]
     name: 'Build (${{ matrix.platform }}, ${{ matrix.arch }})'
@@ -81,14 +99,20 @@ jobs:
     #   build-success: ${{ steps.build.outcome == 'success' }}
 
     steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
+        with:
+          egress-policy: audit
+
       - run: git config --global core.autocrlf false
+
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
         with:
           submodules: true
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - name: Setup Node
+        uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
         with:
           node-version-file: ${{ inputs.node-version-file }}
           registry-url: https://npm.pkg.github.com
@@ -97,7 +121,6 @@ jobs:
 
       - name: Install dependencies
         working-directory: ${{ inputs.working-directory }}
-        shell: bash
         run: |
           if [ "${{ inputs.package-manager }}" = "npm" ]; then
             npm ci
@@ -110,10 +133,18 @@ jobs:
           sed -i "/https:\/\/qlty\.sh\/gh/d" README.md
           sed -i "/https:\/\/securityscorecards\.dev\/viewer/d" README.md
 
+      - name: Lint
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          if [ "${{ inputs.package-manager }}" = "npm" ]; then
+            npm run lint
+          else
+            yarn lint
+          fi
+
       - name: Run build
         id: build
         working-directory: ${{ inputs.working-directory }}
-        shell: bash
         run: |
           if [ "${{ inputs.package-manager }}" = "npm" ]; then
             npm run ${{ inputs.build-script }}
@@ -134,7 +165,6 @@ jobs:
 
       - name: Create package
         working-directory: ${{ inputs.working-directory }}
-        shell: bash
         run: |
           if [ "${{ inputs.package-manager }}" = "npm" ]; then
             npm run package
@@ -159,14 +189,18 @@ jobs:
         include: ${{ fromJson(inputs.test-matrix != '' && inputs.test-matrix || '[{"platform":"windows-2022","arch":"amd64"},{"platform":"windows-2022","arch":"arm64"},{"platform":"ubuntu-24.04","arch":"amd64"},{"platform":"ubuntu-24.04","arch":"arm64"},{"platform":"macos-14","arch":"amd64"},{"platform":"macos-14","arch":"arm64"}]') }}
     runs-on: ${{ matrix.platform }}
     steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
+        with:
+          egress-policy: audit
       - run: git config --global core.autocrlf false
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
         with:
           submodules: true
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
         with:
           node-version-file: ${{ inputs.node-version-file }}
           registry-url: https://npm.pkg.github.com
@@ -175,7 +209,6 @@ jobs:
 
       - name: Install dependencies
         working-directory: ${{ inputs.working-directory }}
-        shell: bash
         run: |
           if [ "${{ inputs.package-manager }}" = "npm" ]; then
             npm ci
@@ -185,7 +218,6 @@ jobs:
 
       - name: Run tests
         working-directory: ${{ inputs.working-directory }}
-        shell: bash
         run: |
           if [ "${{ inputs.package-manager }}" = "npm" ]; then
             npm run ${{ inputs.test-script }}
@@ -210,3 +242,29 @@ jobs:
       #     name: e2e-test-screenshots-${{ matrix.os }}
       #     path: ./e2e-screenshots/*.png
       #     if-no-files-found: ignore
+
+  publish-coverage:
+    name: Publish Coverage
+    needs: test
+    if: inputs.enable-qlty == true
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+
+      - name: Download coverage reports from artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: test-coverage-${{ inputs.package-manager }}
+          path: coverage
+
+      - name: Publish coverage report to Qlty
+        uses: qltysh/qlty-action/coverage@a2277a908db90c4c868832fb9204521fb940fdb4 # v1
+        with:
+          token: ${{ secrets.QLTY_COVERAGE_TOKEN }}
+          files: coverage/lcov.info
+          skip-errors: false
