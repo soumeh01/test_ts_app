@@ -1,0 +1,82 @@
+name: TPIP
+
+on:
+  workflow_call:
+    inputs:
+      node-version-file:
+        description: 'package.json file'
+        required: true
+        type: string
+        default: './package.json'
+      package-manager:
+        description: 'Package manager to use (npm or yarn)'
+        required: false
+        type: string
+        default: 'npm'
+      tpip-header-file:
+        type: string
+        required: true
+        description: Path to the TPIP header file.
+      tpip-json-file:
+        type: string
+        required: true
+        description: Path to the TPIP JSON file.
+
+env:
+  CALLER_DIR: 'caller-repository'
+  WORKFLOW_DIR: 'test_ts_app'
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
+        with:
+          egress-policy: audit
+
+      - name: Checkout repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          repository: ${{ github.event.repository.full_name }}
+          path: ${{ env.CALLER_DIR }}
+
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          repository: soumeh01/test_ts_app
+          path: ${{ env.WORKFLOW_DIR }}
+
+      - name: Debug Info 1
+        run: |
+          ls -l ${{ env.WORKFLOW_DIR }}
+      - name: Debug Info 2
+        run: |
+          ls -l ${{ env.WORKFLOW_DIR }}/scripts
+      - name: Setup Node
+        uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        with:
+          node-version-file: ${{ env.CALLER_DIR }}/${{ inputs.node-version-file }}
+          registry-url: https://npm.pkg.github.com
+          package-manager-cache: false
+          always-auth: true
+
+      - name: Install dependencies
+        run: |
+          if [ "${{ inputs.package-manager }}" = "npm" ]; then
+            npm ci
+          else
+            yarn --frozen-lockfile --prefer-offline --ignore-scripts
+          fi
+
+      - name: Generate third-party licenses report
+        run: |
+          npx tsx ${{ env.WORKFLOW_DIR }}/scripts/tpip-reporter.ts \
+            --header ${{ env.CALLER_DIR }}/${{ inputs.tpip-header-file }} ${{ env.CALLER_DIR }}/${{ inputs.tpip-json-file }} TPIP.md
+
+      - name: Upload third-party licenses report
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: TPIP-report
+          path: ./TPIP.md
+          retention-days: 1
