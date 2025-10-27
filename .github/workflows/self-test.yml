@@ -36,8 +36,6 @@ jobs:
   self-test-yarn:
     uses: ./.github/workflows/build-and-verify.yml
     with:
-      build-matrix: '[{"platform":"windows-2022","arch":"amd64"},{"platform":"ubuntu-24.04","arch":"amd64"}]'
-      test-matrix: '[{"platform":"windows-2022","arch":"amd64"},{"platform":"ubuntu-24.04","arch":"amd64"}]'
       package-manager: yarn
       node-version-file: './package.json'
   # # Test with different package managers using matrix
