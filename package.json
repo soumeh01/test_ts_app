@@ -25,7 +25,7 @@
     "url": "https://github.com/soumeh01/test_ts_app.git"
   },
   "activationEvents": [
-    "*"
+    "onStartupFinished"
   ],
   "contributes": {},
   "scripts": {

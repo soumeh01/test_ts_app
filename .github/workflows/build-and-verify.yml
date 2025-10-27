@@ -86,11 +86,14 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          repository: soumeh01/test_ts_app
+          path: workflow-repo
 
       - name: Load default platform matrix
         id: load-default-matrix
         run: |
-          matrix=$(cat .github/platform-matrix.json | jq -c .)
+          matrix=$(cat workflow-repo/.github/platform-matrix.json | jq -c .)
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
       - name: Get working directory
@@ -140,6 +143,34 @@ jobs:
           package-manager-cache: false
           always-auth: true
 
+      - name: Set version
+        if: |
+          (matrix.arch == 'amd64') &&
+          (startsWith(matrix.platform, 'ubuntu')) &&
+          (github.repository_owner == 'Open-CMSIS-Pack')
+        run: |
+          case ${{ github.event_name }} in
+            release)
+              TAG="${{ github.event.release.tag_name }}"
+              yarn version --no-git-tag-version --new-version "${TAG#v}"
+              ;;
+            pull_request)
+              DESCRIBE=$(git describe --tags | grep -Eo 'v[0-9]+\.[0-9]+\.[0-9]+')
+              QUALIFIER=$(git describe --tags | grep -Eo '\-g[0-9a-f]+$')
+              yarn version -s --no-git-tag-version --new-version "${DESCRIBE#v}"
+              yarn version --no-git-tag-version --prepatch --preid "pr${{ github.event.number }}${QUALIFIER}"
+              ;;
+            *)
+              DESCRIBE=$(git describe --tags | grep -Eo 'v[0-9]+\.[0-9]+\.[0-9]+')
+              QUALIFIER=$(git describe --tags | grep -Eo '[0-9]+\-g[0-9a-f]+$')
+              yarn version -s --no-git-tag-version --new-version "${DESCRIBE#v}"
+              yarn version --no-git-tag-version --prepatch --preid "${{ github.ref_name }}${QUALIFIER}"
+              ;;
+          esac
+          VERSION="$(jq -r ".version" < package.json)"
+          sed -i "s/## Unreleased/## ${VERSION}/" CHANGELOG.md
+          echo "Version is ${VERSION}"
+
       - name: Install dependencies
         working-directory: ./${{ inputs.working-directory }}
         run: |
@@ -150,20 +181,10 @@ jobs:
           fi
 
       - name: Remove badges
-        # Used for release assets
+        if: (matrix.arch == 'amd64') && (startsWith(matrix.platform, 'ubuntu'))
         run: |
-          node -e "
-          const fs = require('fs');
-          if (fs.existsSync('README.md')) {
-            let content = fs.readFileSync('README.md', 'utf8');
-            content = content.replace(/.*https:\/\/qlty\.sh\/gh.*\n?/g, '');
-            content = content.replace(/.*https:\/\/securityscorecards\.dev\/viewer.*\n?/g, '');
-            fs.writeFileSync('README.md', content);
-            console.log('✅ Badges removed from README.md');
-          } else {
-            console.log('⚠️ README.md not found, skipping badge removal');
-          }
-          "
+          sed -i "/https:\/\/qlty\.sh\/gh/d" README.md
+          sed -i "/https:\/\/securityscorecards\.dev\/viewer/d" README.md
 
       - name: Lint
         working-directory: ./${{ inputs.working-directory }}
@@ -191,32 +212,33 @@ jobs:
 
       - name: Upload dist
         # Used for release assets
-        if: runner.os == 'Linux'
+        if: (matrix.arch == 'amd64') && (startsWith(matrix.platform, 'ubuntu'))
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: dist-${{ inputs.package-manager }}-${{ matrix.platform }}-${{ matrix.arch }}
+          name: dist-${{ inputs.package-manager }}
           path: |
             ./README.md
+            ./CHANGELOG.md
             ./package.json
             ./dist
           retention-days: 1
 
-      - name: Create package
-        working-directory: ./${{ inputs.working-directory }}
-        run: |
-          if [ "${{ inputs.package-manager }}" = "npm" ]; then
-            npm run package
-          else
-            yarn package
-          fi
+      # - name: Create package
+      #   working-directory: ./${{ inputs.working-directory }}
+      #   run: |
+      #     if [ "${{ inputs.package-manager }}" = "npm" ]; then
+      #       npm run package
+      #     else
+      #       yarn package
+      #     fi
 
-      - name: Upload package
-        if: success()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: vsix-package-${{ inputs.package-manager }}-${{ matrix.platform }}-${{ matrix.arch }}
-          path: ./*.vsix
-          retention-days: 1
+      # - name: Upload package
+      #   if: success()
+      #   uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      #   with:
+      #     name: vsix-package-${{ inputs.package-manager }}-${{ matrix.platform }}-${{ matrix.arch }}
+      #     path: ./*.vsix
+      #     retention-days: 1
 
   test:
     needs: [ configure-ci ]
@@ -264,8 +286,7 @@ jobs:
           fi
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        # Used for release assets
-        if: runner.os == 'Linux'
+        if: (matrix.arch == 'amd64') && (startsWith(matrix.platform, 'ubuntu'))
         with:
           name: test-coverage-${{ inputs.package-manager }}
           path: ./coverage
@@ -308,73 +329,79 @@ jobs:
           files: coverage/lcov.info
           skip-errors: false
 
-  # package:
-  #   name: Package
-  #   runs-on: [ubuntu-latest]
-  #   needs: build
-  #   strategy:
-  #     fail-fast: true
-  #     matrix:
-  #       target:
-  #         - win32-x64
-  #         - win32-arm64
-  #         - linux-x64
-  #         - linux-arm64
-  #         - darwin-arm64
-  #   permissions:
-  #     packages: read
-  #   steps:
-  #     - name: Harden the runner (Audit all outbound calls)
-  #       uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
-  #       with:
-  #         egress-policy: audit
+  package:
+    name: Package
+    runs-on: [ubuntu-latest]
+    needs: build
+    strategy:
+      fail-fast: true
+      matrix:
+        target:
+          - win32-x64
+          - win32-arm64
+          - linux-x64
+          - linux-arm64
+          - darwin-arm64
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
+        with:
+          egress-policy: audit
 
-  #     - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
-  #       with:
-  #         submodules: true
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          submodules: true
 
-  #     - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
-  #       env:
-  #         NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  #       with:
-  #         node-version-file: package.json
-  #         registry-url: https://npm.pkg.github.com
-  #         always-auth: true
-  #         package-manager-cache: false
+      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          node-version-file: package.json
+          registry-url: https://npm.pkg.github.com
+          always-auth: true
+          package-manager-cache: false
 
-  #     - name: Download dist
-  #       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-  #       with:
-  #         name: dist-${{ inputs.package-manager }}
-  #         path: .
+      - name: Download dist
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: dist-${{ inputs.package-manager }}
+          path: .
 
-  #     # - name: Download tools
-  #     #   working-directory: ./${{ inputs.working-directory }}
-  #     #   run: |
-  #     #     if [ "${{ inputs.package-manager }}" = "npm" ]; then
-  #     #       npm ci
-  #     #       npm run download-tools -- --target ${{ matrix.target }} --no-cache
-  #     #     else
-  #     #       yarn --frozen-lockfile --ignore-scripts --prefer-offline
-  #     #       yarn download-tools --target ${{ matrix.target }} --no-cache
-  #     #     fi
+      - name: Install dependencies
+        working-directory: ./${{ inputs.working-directory }}
+        run: |
+          if [ "${{ inputs.package-manager }}" = "npm" ]; then
+            npm ci
+          else
+            yarn --frozen-lockfile --prefer-offline --ignore-scripts
+          fi
+      # - name: Download tools
+      #   working-directory: ./${{ inputs.working-directory }}
+      #   run: |
+      #     if [ "${{ inputs.package-manager }}" = "npm" ]; then
+      #       npm ci
+      #       npm run download-tools -- --target ${{ matrix.target }} --no-cache
+      #     else
+      #       yarn --frozen-lockfile --ignore-scripts --prefer-offline
+      #       yarn download-tools --target ${{ matrix.target }} --no-cache
+      #     fi
 
-  #     - name: Create package
-  #       working-directory: ./${{ inputs.working-directory }}
-  #       run: |
-  #         if [ "${{ inputs.package-manager }}" = "npm" ]; then
-  #           npm run package
-  #         else
-  #           yarn package
-  #         fi
+      - name: Create package
+        working-directory: ./${{ inputs.working-directory }}
+        run: |
+          if [ "${{ inputs.package-manager }}" = "npm" ]; then
+            npm run build && npm run package -- --target ${{ matrix.target }} --no-yarn
+          else
+            yarn build && yarn package -- --target ${{ matrix.target }} --yarn
+          fi
 
-  #     - name: Upload package
-  #       if: success()
-  #       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-  #       with:
-  #         name: vsix-package-${{ inputs.package-manager }}-${{ matrix.target }}
-  #         path: ./*.vsix
-  #         retention-days: 1
+      - name: Upload package
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: vsix-package-${{ inputs.package-manager }}-${{ matrix.target }}
+          path: ./*.vsix
+          retention-days: 1
 
   # publish:
   #   name: Publish release
