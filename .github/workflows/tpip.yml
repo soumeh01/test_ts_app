@@ -46,12 +46,6 @@ jobs:
           repository: soumeh01/test_ts_app
           path: ${{ env.WORKFLOW_DIR }}
 
-      - name: Debug Info 1
-        run: |
-          ls -l ${{ env.WORKFLOW_DIR }}
-      - name: Debug Info 2
-        run: |
-          ls -l ${{ env.WORKFLOW_DIR }}/scripts
       - name: Setup Node
         uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
         with:
@@ -61,6 +55,7 @@ jobs:
           always-auth: true
 
       - name: Install dependencies
+        working-directory: ${{ env.WORKFLOW_DIR }}
         run: |
           if [ "${{ inputs.package-manager }}" = "npm" ]; then
             npm ci
@@ -70,8 +65,11 @@ jobs:
 
       - name: Generate third-party licenses report
         run: |
-          npx tsx ${{ env.WORKFLOW_DIR }}/scripts/tpip-reporter.ts \
-            --header ${{ env.CALLER_DIR }}/${{ inputs.tpip-header-file }} ${{ env.CALLER_DIR }}/${{ inputs.tpip-json-file }} TPIP.md
+          cd ./${{ env.WORKFLOW_DIR }}
+          npx tsx ./scripts/tpip-reporter.ts \
+            --header ../${{ env.CALLER_DIR }}/${{ inputs.tpip-header-file }} \
+            ../${{ env.CALLER_DIR }}/${{ inputs.tpip-json-file }} \
+            ../TPIP.md
 
       - name: Upload third-party licenses report
         if: success()

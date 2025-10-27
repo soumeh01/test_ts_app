@@ -22,16 +22,6 @@ on:
         required: false
         type: string
         default: '.'
-      build-script:
-        description: 'Build script to run'
-        required: false
-        type: string
-        default: 'build'
-      test-script:
-        description: 'Test script to run'
-        required: false
-        type: string
-        default: 'test'
       build-matrix:
         type: string
         required: false
@@ -45,7 +35,28 @@ on:
         required: false
         default: false
         description: If true, coverage reports are uploaded to Qlty. Requires QLTY_COVERAGE_TOKEN secret.
-    # outputs:
+      download-script-name:
+        type: string
+        required: false
+        description: Path to an executable script. If provided, this is run once per platform before packaging. The platform is passed as an argument.
+# specific command inputs
+      build-command:
+        description: 'Build command to run'
+        required: false
+        type: string
+        default: 'build'
+      test-command:
+        description: 'Test command to run'
+        required: false
+        type: string
+        default: 'test'
+      lint-command:
+        description: 'Lint command to run'
+        required: false
+        type: string
+        default: 'lint'
+
+        # outputs:
     #   build-success:
     #     description: 'Whether the build was successful'
     #     value: ${{ jobs.build.outputs.build-success }}
@@ -93,7 +104,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJson(inputs.test-matrix != '' && inputs.test-matrix || '[{"platform":"windows-2022","arch":"amd64"},{"platform":"windows-2022","arch":"arm64"},{"platform":"ubuntu-24.04","arch":"amd64"},{"platform":"ubuntu-24.04","arch":"arm64"},{"platform":"macos-14","arch":"amd64"},{"platform":"macos-14","arch":"arm64"}]') }}
+        include: ${{ fromJson(inputs.test-matrix != '' && inputs.test-matrix || '[{"platform":"windows-2022","arch":"amd64"},{"platform":"windows-2022","arch":"arm64"},{"platform":"ubuntu-24.04","arch":"amd64"},{"platform":"ubuntu-24.04","arch":"arm64"},{"platform":"macos-15-intel","arch":"amd64"},{"platform":"macos-14","arch":"arm64"}]') }}
     runs-on: ${{ matrix.platform }}
     # outputs:
     #   build-success: ${{ steps.build.outcome == 'success' }}
@@ -120,7 +131,7 @@ jobs:
           always-auth: true
 
       - name: Install dependencies
-        working-directory: ${{ inputs.working-directory }}
+        working-directory: ./${{ inputs.working-directory }}
         run: |
           if [ "${{ inputs.package-manager }}" = "npm" ]; then
             npm ci
@@ -129,22 +140,38 @@ jobs:
           fi
 
       - name: Remove badges
+        # Used for release assets
         run: |
-          sed -i "/https:\/\/qlty\.sh\/gh/d" README.md
-          sed -i "/https:\/\/securityscorecards\.dev\/viewer/d" README.md
+          node -e "
+          const fs = require('fs');
+          if (fs.existsSync('README.md')) {
+            let content = fs.readFileSync('README.md', 'utf8');
+            content = content.replace(/.*https:\/\/qlty\.sh\/gh.*\n?/g, '');
+            content = content.replace(/.*https:\/\/securityscorecards\.dev\/viewer.*\n?/g, '');
+            fs.writeFileSync('README.md', content);
+            console.log('✅ Badges removed from README.md');
+          } else {
+            console.log('⚠️ README.md not found, skipping badge removal');
+          }
+          "
 
       - name: Lint
-        working-directory: ${{ inputs.working-directory }}
+        working-directory: ./${{ inputs.working-directory }}
         run: |
           if [ "${{ inputs.package-manager }}" = "npm" ]; then
-            npm run lint
+            npm run ${{ inputs.lint-command }}
           else
-            yarn lint
+            yarn ${{ inputs.lint-command }}
           fi
+
+      # - name: Download tool dependencies (for universal VSIX)
+      #   if: ${{ inputs.download-script-name != '' }}
+      #   working-directory: .github/workflows
+      #   run: ./${{inputs.download-script-name}}
 
       - name: Run build
         id: build
-        working-directory: ${{ inputs.working-directory }}
+        working-directory: ./${{ inputs.working-directory }}
         run: |
           if [ "${{ inputs.package-manager }}" = "npm" ]; then
             npm run ${{ inputs.build-script }}
@@ -153,6 +180,7 @@ jobs:
           fi
 
       - name: Upload dist
+        # Used for release assets
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -164,7 +192,7 @@ jobs:
           retention-days: 1
 
       - name: Create package
-        working-directory: ${{ inputs.working-directory }}
+        working-directory: ./${{ inputs.working-directory }}
         run: |
           if [ "${{ inputs.package-manager }}" = "npm" ]; then
             npm run package
@@ -186,7 +214,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJson(inputs.test-matrix != '' && inputs.test-matrix || '[{"platform":"windows-2022","arch":"amd64"},{"platform":"windows-2022","arch":"arm64"},{"platform":"ubuntu-24.04","arch":"amd64"},{"platform":"ubuntu-24.04","arch":"arm64"},{"platform":"macos-14","arch":"amd64"},{"platform":"macos-14","arch":"arm64"}]') }}
+        include: ${{ fromJson(inputs.test-matrix != '' && inputs.test-matrix || '[{"platform":"windows-2022","arch":"amd64"},{"platform":"windows-2022","arch":"arm64"},{"platform":"ubuntu-24.04","arch":"amd64"},{"platform":"ubuntu-24.04","arch":"arm64"},{"platform":"macos-15-intel","arch":"amd64"},{"platform":"macos-14","arch":"arm64"}]') }}
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Harden the runner (Audit all outbound calls)
@@ -208,7 +236,7 @@ jobs:
           always-auth: true
 
       - name: Install dependencies
-        working-directory: ${{ inputs.working-directory }}
+        working-directory: ./${{ inputs.working-directory }}
         run: |
           if [ "${{ inputs.package-manager }}" = "npm" ]; then
             npm ci
@@ -217,7 +245,7 @@ jobs:
           fi
 
       - name: Run tests
-        working-directory: ${{ inputs.working-directory }}
+        working-directory: ./${{ inputs.working-directory }}
         run: |
           if [ "${{ inputs.package-manager }}" = "npm" ]; then
             npm run ${{ inputs.test-script }}
@@ -226,6 +254,7 @@ jobs:
           fi
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        # Used for release assets
         if: runner.os == 'Linux'
         with:
           name: test-coverage-${{ inputs.package-manager }}
@@ -268,3 +297,115 @@ jobs:
           token: ${{ secrets.QLTY_COVERAGE_TOKEN }}
           files: coverage/lcov.info
           skip-errors: false
+
+  # package:
+  #   name: Package
+  #   runs-on: [ubuntu-latest]
+  #   needs: build
+  #   strategy:
+  #     fail-fast: true
+  #     matrix:
+  #       target:
+  #         - win32-x64
+  #         - win32-arm64
+  #         - linux-x64
+  #         - linux-arm64
+  #         - darwin-arm64
+  #   permissions:
+  #     packages: read
+  #   steps:
+  #     - name: Harden the runner (Audit all outbound calls)
+  #       uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
+  #       with:
+  #         egress-policy: audit
+
+  #     - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+  #       with:
+  #         submodules: true
+
+  #     - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+  #       env:
+  #         NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #       with:
+  #         node-version-file: package.json
+  #         registry-url: https://npm.pkg.github.com
+  #         always-auth: true
+  #         package-manager-cache: false
+
+  #     - name: Download dist
+  #       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+  #       with:
+  #         name: dist-${{ inputs.package-manager }}
+  #         path: .
+
+  #     # - name: Download tools
+  #     #   working-directory: ./${{ inputs.working-directory }}
+  #     #   run: |
+  #     #     if [ "${{ inputs.package-manager }}" = "npm" ]; then
+  #     #       npm ci
+  #     #       npm run download-tools -- --target ${{ matrix.target }} --no-cache
+  #     #     else
+  #     #       yarn --frozen-lockfile --ignore-scripts --prefer-offline
+  #     #       yarn download-tools --target ${{ matrix.target }} --no-cache
+  #     #     fi
+
+  #     - name: Create package
+  #       working-directory: ./${{ inputs.working-directory }}
+  #       run: |
+  #         if [ "${{ inputs.package-manager }}" = "npm" ]; then
+  #           npm run package
+  #         else
+  #           yarn package
+  #         fi
+
+  #     - name: Upload package
+  #       if: success()
+  #       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+  #       with:
+  #         name: vsix-package-${{ inputs.package-manager }}-${{ matrix.target }}
+  #         path: ./*.vsix
+  #         retention-days: 1
+
+  # publish:
+  #   name: Publish release
+  #   runs-on: [ubuntu-latest]
+  #   if: github.event_name == 'release'
+  #   needs: package
+  #   permissions:
+  #     contents: write  # for softprops/action-gh-release to create a GitHub release
+  #   steps:
+  #     - name: Harden the runner (Audit all outbound calls)
+  #       uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
+  #       with:
+  #         egress-policy: audit
+
+  #     - name: Download packages
+  #       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+  #       with:
+  #         pattern: vsix-package-*
+
+  #     - name: Download coverage report
+  #       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+  #       with:
+  #         pattern: test-coverage
+
+  #     - name: Download test report
+  #       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+  #       with:
+  #         pattern: test-report-linux
+
+  #     - name: Zip test report
+  #       run: zip -r test-report.zip *
+  #       working-directory: test-report-linux
+
+  #     - name: Zip test coverage
+  #       run: zip -r test-coverage.zip *
+  #       working-directory: test-coverage
+
+  #     - name: Attach packages
+  #       uses: softprops/action-gh-release@6cbd405e2c4e67a21c47fa9e383d020e4e28b836 # v2.3.3
+  #       with:
+  #         files: |
+  #           **/*.vsix
+  #           test-coverage/test-coverage.zip
+  #           test-report-linux/test-report.zip
