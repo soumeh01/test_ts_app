@@ -77,11 +77,21 @@ jobs:
     outputs:
       working-dir: ${{ steps.get-working-dir.outputs.dir }}
       has-e2e-tests: ${{ steps.check-e2e-test-script.outputs.has-e2e-script }}
+      default-matrix: ${{ steps.load-default-matrix.outputs.matrix }}
     steps:
       - name: Harden the runner (Audit all outbound calls)
         uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
         with:
           egress-policy: audit
+
+      - name: Checkout repository
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+
+      - name: Load default platform matrix
+        id: load-default-matrix
+        run: |
+          matrix=$(cat .github/platform-matrix.json | jq -c .)
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
       - name: Get working directory
         id: get-working-dir
@@ -104,7 +114,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJson(inputs.test-matrix != '' && inputs.test-matrix || '[{"platform":"windows-2022","arch":"amd64"},{"platform":"windows-2022","arch":"arm64"},{"platform":"ubuntu-24.04","arch":"amd64"},{"platform":"ubuntu-24.04","arch":"arm64"},{"platform":"macos-15-intel","arch":"amd64"},{"platform":"macos-14","arch":"arm64"}]') }}
+        include: ${{ fromJson(inputs.test-matrix != '' && inputs.test-matrix || needs.configure-ci.outputs.default-matrix) }}
     runs-on: ${{ matrix.platform }}
     # outputs:
     #   build-success: ${{ steps.build.outcome == 'success' }}
@@ -184,7 +194,7 @@ jobs:
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: dist-${{ inputs.package-manager }}
+          name: dist-${{ inputs.package-manager }}-${{ matrix.platform }}-${{ matrix.arch }}
           path: |
             ./README.md
             ./package.json
@@ -214,7 +224,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJson(inputs.test-matrix != '' && inputs.test-matrix || '[{"platform":"windows-2022","arch":"amd64"},{"platform":"windows-2022","arch":"arm64"},{"platform":"ubuntu-24.04","arch":"amd64"},{"platform":"ubuntu-24.04","arch":"arm64"},{"platform":"macos-15-intel","arch":"amd64"},{"platform":"macos-14","arch":"arm64"}]') }}
+        include: ${{ fromJson(inputs.test-matrix != '' && inputs.test-matrix || needs.configure-ci.outputs.default-matrix) }}
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Harden the runner (Audit all outbound calls)
