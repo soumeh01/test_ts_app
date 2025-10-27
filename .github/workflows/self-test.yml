@@ -1,31 +1,38 @@
 name: Self Test
 
-# This workflow demonstrates the new matrix functionality in the reusable build workflow.
-# It showcases different matrix configurations for various use cases:
-# 
-# 1. Multi-OS/architecture builds - Tests cross-platform compatibility
-# 2. Package manager combinations with Node.js versions - Tests different toolchain combinations  
-# 3. ARM architecture specific builds - Tests ARM64 support
-# 4. Integration with verification workflow - Shows how to chain matrix builds with verification
-#
-# Matrix Examples:
-# - build-matrix: [{"os": "linux", "arch": "x64"}, {"os": "darwin", "arch": "arm64"}]
-# - test-matrix: [{"platform": "ubuntu-latest", "arch": "x64"}, {"platform": "macos-latest", "arch": "x64"}]
-
 on:
   workflow_dispatch:
   pull_request:
     paths:
       - '.github/workflows/self-test.yml'
       - '.github/workflows/build-and-verify.yml'
+      - '.github/platform-matrix.json'
       - 'src/**'
       - 'package.json'
       - 'tsconfig.json'
       - 'yarn.lock'
+  release:
+    types: [published]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
-  # Test with build matrix for different OS/architecture combinations
+  # Test npm package manager with custom build/test matrix
+  # This job demonstrates:
+  # - Custom platform matrix (Windows 2022 + Ubuntu 24.04, both AMD64 only)
+  # - npm package manager usage
+  # - Explicit build-matrix and test-matrix configuration
+  # - Uses Node.js version from package.json engines field
+  # - Runs build, test, lint, and package jobs across specified platforms
+  # - Overrides default 6-platform matrix with limited 2-platform matrix for faster testing
   self-test-npm:
+    permissions:
+      contents: write  # Required for the publish job in the reusable workflow
     uses: ./.github/workflows/build-and-verify.yml
     with:
       build-matrix: '[{"platform":"windows-2022","arch":"amd64"},{"platform":"ubuntu-24.04","arch":"amd64"}]'
@@ -33,67 +40,22 @@ jobs:
       package-manager: npm
       node-version-file: './package.json'
 
+  # Test yarn package manager with default matrix configuration
+  # This job demonstrates:
+  # - yarn package manager usage (automatically detects yarn.lock and uses --yarn flag)
+  # - Default platform matrix from .github/platform-matrix.json (all 6 platforms: Windows/Ubuntu/macOS with AMD64/ARM64)
+  # - Uses Node.js version from package.json engines field
+  # - build-matrix defaults to empty (uses default from platform-matrix.json)
+  # - test-matrix defaults to empty (uses default from platform-matrix.json)
+  # - Default build-command: 'build', test-command: 'test', lint-command: 'lint'
+  # - Runs full cross-platform build/test/package cycle across all supported platforms
   self-test-yarn:
+    permissions:
+      contents: write  # Required for the publish job in the reusable workflow
     uses: ./.github/workflows/build-and-verify.yml
     with:
       package-manager: yarn
       node-version-file: './package.json'
-  # # Test with different package managers using matrix
-  # package-manager-matrix:
-  #   name: Package Manager Matrix Test
-  #   strategy:
-  #     matrix:
-  #       package-manager: ['npm', 'yarn']
-  #       node-version: ['18', '20']
-  #   uses: ./.github/workflows/build.yml
-  #   with:
-  #     build-matrix: |
-  #       {
-  #         "include": [
-  #           {"os": "linux", "arch": "x64"},
-  #           {"os": "darwin", "arch": "arm64"}
-  #         ]
-  #       }
-  #     test-matrix: |
-  #       {
-  #         "include": [
-  #           {"platform": "ubuntu-latest", "arch": "x64"},
-  #           {"platform": "macos-latest", "arch": "x64"}
-  #         ]
-  #       }
-  #     package-manager: ${{ matrix.package-manager }}
-  #     node-version: ${{ matrix.node-version }}
-  #     artifact-name: '${{ matrix.package-manager }}-${{ matrix.node-version }}-build'
 
-  # # Test ARM architecture builds
-  # arm-build-test:
-  #   name: ARM Build Test
-  #   uses: ./.github/workflows/build.yml
-  #   with:
-  #     build-matrix: |
-  #       {
-  #         "include": [
-  #           {"os": "linux", "arch": "arm64"},
-  #           {"os": "darwin", "arch": "arm64"}
-  #         ]
-  #       }
-  #     test-matrix: |
-  #       {
-  #         "include": [
-  #           {"platform": "ubuntu-latest", "arch": "arm64"}
-  #         ]
-  #       }
-  #     package-manager: 'npm'
-  #     node-version: '20'
-  #     artifact-name: 'arm-build'
-
-  # # Verify builds with verify workflow
-  # verify-builds:
-  #   name: Verify Matrix Builds
-  #   needs: [build-matrix-test, package-manager-matrix, arm-build-test]
-  #   uses: ./.github/workflows/verify.yml
-  #   with:
-  #     package-manager: 'npm'
-  #     node-version: '20'
-  #     skip-tests: true  # No test script in current package.json
-  #     skip-lint: true   # No lint script in current package.json
+  markdown-check:
+    uses: Open-CMSIS-Pack/workflows-and-actions-collection/.github/workflows/markdown-lint.yml@v1.0.1

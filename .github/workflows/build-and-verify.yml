@@ -188,12 +188,7 @@ jobs:
 
       - name: Lint
         working-directory: ./${{ inputs.working-directory }}
-        run: |
-          if [ "${{ inputs.package-manager }}" = "npm" ]; then
-            npm run ${{ inputs.lint-command }}
-          else
-            yarn ${{ inputs.lint-command }}
-          fi
+        run: ${{ inputs.package-manager }} run ${{ inputs.lint-command }}
 
       # - name: Download tool dependencies (for universal VSIX)
       #   if: ${{ inputs.download-script-name != '' }}
@@ -203,17 +198,12 @@ jobs:
       - name: Run build
         id: build
         working-directory: ./${{ inputs.working-directory }}
-        run: |
-          if [ "${{ inputs.package-manager }}" = "npm" ]; then
-            npm run ${{ inputs.build-script }}
-          else
-            yarn ${{ inputs.build-script }}
-          fi
+        run: ${{ inputs.package-manager }} run ${{ inputs.build-command }}
 
       - name: Upload dist
         # Used for release assets
         if: (matrix.arch == 'amd64') && (startsWith(matrix.platform, 'ubuntu'))
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: dist-${{ inputs.package-manager }}
           path: |
@@ -234,7 +224,7 @@ jobs:
 
       # - name: Upload package
       #   if: success()
-      #   uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      #   uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
       #   with:
       #     name: vsix-package-${{ inputs.package-manager }}-${{ matrix.platform }}-${{ matrix.arch }}
       #     path: ./*.vsix
@@ -278,14 +268,9 @@ jobs:
 
       - name: Run tests
         working-directory: ./${{ inputs.working-directory }}
-        run: |
-          if [ "${{ inputs.package-manager }}" = "npm" ]; then
-            npm run ${{ inputs.test-script }}
-          else
-            yarn ${{ inputs.test-script }}
-          fi
+        run: ${{ inputs.package-manager }} run ${{ inputs.test-command }}
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         if: (matrix.arch == 'amd64') && (startsWith(matrix.platform, 'ubuntu'))
         with:
           name: test-coverage-${{ inputs.package-manager }}
@@ -296,7 +281,7 @@ jobs:
       #   run: ${{ matrix.e2e-command }}
 
       # - name: Upload screenshots as artifacts
-      #   uses: actions/upload-artifact@v4.6.0
+      #   uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
       #   if: always()
       #   with:
       #     name: e2e-test-screenshots-${{ matrix.os }}
@@ -317,7 +302,7 @@ jobs:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
 
       - name: Download coverage reports from artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
         with:
           name: test-coverage-${{ inputs.package-manager }}
           path: coverage
@@ -362,7 +347,7 @@ jobs:
           package-manager-cache: false
 
       - name: Download dist
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
         with:
           name: dist-${{ inputs.package-manager }}
           path: .
@@ -397,52 +382,42 @@ jobs:
 
       - name: Upload package
         if: success()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: vsix-package-${{ inputs.package-manager }}-${{ matrix.target }}
           path: ./*.vsix
           retention-days: 1
 
-  # publish:
-  #   name: Publish release
-  #   runs-on: [ubuntu-latest]
-  #   if: github.event_name == 'release'
-  #   needs: package
-  #   permissions:
-  #     contents: write  # for softprops/action-gh-release to create a GitHub release
-  #   steps:
-  #     - name: Harden the runner (Audit all outbound calls)
-  #       uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
-  #       with:
-  #         egress-policy: audit
+  release:
+    name: Publish release
+    runs-on: [ubuntu-latest]
+    if: github.event_name == 'release'
+    needs: package
+    permissions:
+      contents: write  # for softprops/action-gh-release to create a GitHub release
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
+        with:
+          egress-policy: audit
 
-  #     - name: Download packages
-  #       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-  #       with:
-  #         pattern: vsix-package-*
+      - name: Download packages
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          pattern: vsix-package-*
 
-  #     - name: Download coverage report
-  #       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-  #       with:
-  #         pattern: test-coverage
+      - name: Download coverage report
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          pattern: test-coverage-${{ inputs.package-manager }}
 
-  #     - name: Download test report
-  #       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-  #       with:
-  #         pattern: test-report-linux
+      - name: Zip test coverage
+        run: zip -r test-coverage.zip *
+        working-directory: test-coverage-${{ inputs.package-manager }}
 
-  #     - name: Zip test report
-  #       run: zip -r test-report.zip *
-  #       working-directory: test-report-linux
-
-  #     - name: Zip test coverage
-  #       run: zip -r test-coverage.zip *
-  #       working-directory: test-coverage
-
-  #     - name: Attach packages
-  #       uses: softprops/action-gh-release@6cbd405e2c4e67a21c47fa9e383d020e4e28b836 # v2.3.3
-  #       with:
-  #         files: |
-  #           **/*.vsix
-  #           test-coverage/test-coverage.zip
-  #           test-report-linux/test-report.zip
+      - name: Attach packages
+        uses: softprops/action-gh-release@6cbd405e2c4e67a21c47fa9e383d020e4e28b836 # v2.3.3
+        with:
+          files: |
+            **/*.vsix
+            test-coverage-${{ inputs.package-manager }}/test-coverage.zip
