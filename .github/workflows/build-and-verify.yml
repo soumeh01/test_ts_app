@@ -134,6 +134,7 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           submodules: true
+          fetch-depth: 0  # Fetch full history for git describe to work
 
       - name: Setup Node
         uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
@@ -145,9 +146,8 @@ jobs:
 
       - name: Set version
         if: |
-          (matrix.arch == 'amd64') &&
-          (startsWith(matrix.platform, 'ubuntu')) &&
-          (github.repository_owner == 'Open-CMSIS-Pack')
+          false && (matrix.arch == 'amd64') &&
+          (startsWith(matrix.platform, 'ubuntu'))
         run: |
           case ${{ github.event_name }} in
             release)
@@ -248,6 +248,7 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           submodules: true
+          fetch-depth: 0  # Fetch full history for git describe to work
 
       - name: Setup Node
         uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
@@ -410,9 +411,15 @@ jobs:
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
         with:
           pattern: test-coverage-${{ inputs.package-manager }}
+          path: test-coverage-${{ inputs.package-manager }}
+
+      - name: Debug log
+        run: ls -l
 
       - name: Zip test coverage
-        run: zip -r test-coverage.zip *
+        run: |
+          ls -l
+          zip -r test-coverage.zip *
         working-directory: test-coverage-${{ inputs.package-manager }}
 
       - name: Attach packages

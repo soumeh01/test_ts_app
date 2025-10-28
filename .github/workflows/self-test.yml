@@ -50,6 +50,7 @@ jobs:
   # - Default build-command: 'build', test-command: 'test', lint-command: 'lint'
   # - Runs full cross-platform build/test/package cycle across all supported platforms
   self-test-yarn:
+    if: github.event_name != 'release'
     permissions:
       contents: write  # Required for the publish job in the reusable workflow
     uses: ./.github/workflows/build-and-verify.yml
