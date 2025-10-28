@@ -1,0 +1,27 @@
+version: 2
+
+updates:
+  # Maintain dependencies for the JavaScript packages
+  - package-ecosystem: "npm"
+    directory: "/"
+    open-pull-requests-limit: 10
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+    ignore:
+      - dependency-name: "@types/node"
+        update-types:
+          - version-update:semver-major
+      - dependency-name: "jest"
+        update-types:
+          - version-update:semver-major
+      - dependency-name: "@types/jest"
+        update-types:
+          - version-update:semver-major
+
+  # Maintain dependencies for GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
