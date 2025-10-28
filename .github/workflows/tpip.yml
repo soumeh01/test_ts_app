@@ -21,13 +21,18 @@ on:
         type: string
         required: true
         description: Path to the TPIP JSON file.
+      tpip-report-file:
+        type: string
+        required: false
+        description: Path to the generated TPIP report file.
+        default: 'TPIP.md'
 
 env:
   CALLER_DIR: 'caller-repository'
   WORKFLOW_DIR: 'test_ts_app'
 
 jobs:
-  report:
+  update-report:
     runs-on: ubuntu-latest
     steps:
       - name: Harden the runner (Audit all outbound calls)
@@ -55,7 +60,7 @@ jobs:
           always-auth: true
 
       - name: Install dependencies
-        working-directory: ${{ env.WORKFLOW_DIR }}
+        working-directory: ${{ env.CALLER_DIR }}
         run: |
           if [ "${{ inputs.package-manager }}" = "npm" ]; then
             npm ci
@@ -63,18 +68,51 @@ jobs:
             yarn --frozen-lockfile --prefer-offline --ignore-scripts
           fi
 
+      - name: Update TPIP
+        id: excerpt
+        run: |
+          ${{ inputs.package-manager }} run tpip:update
+          if git diff --exit-code docs/third-party-licenses.json > /dev/null; then
+            echo "update=0" >> $GITHUB_OUTPUT
+          else
+            echo "update=1" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Debug log
+        run: |
+          echo "TPIP update needed: ${{ steps.excerpt.outputs.update }}"
+          ls -l
+
       - name: Generate third-party licenses report
+        if: ${{ steps.excerpt.outputs.update == 1 }}
         run: |
           cd ./${{ env.WORKFLOW_DIR }}
           npx tsx ./scripts/tpip-reporter.ts \
             --header ../${{ env.CALLER_DIR }}/${{ inputs.tpip-header-file }} \
             ../${{ env.CALLER_DIR }}/${{ inputs.tpip-json-file }} \
-            ../TPIP.md
+            ../${{ env.CALLER_DIR }}/${{ inputs.tpip-report-file }}
 
       - name: Upload third-party licenses report
         if: success()
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: TPIP-report
-          path: ./TPIP.md
+          path: ./${{ env.CALLER_DIR }}/${{ inputs.tpip-report-file }}
           retention-days: 1
+
+      - name: Commit Changes
+        if: ${{ steps.excerpt.outputs.update == 1 }}
+        uses: peter-evans/create-pull-request@271a8d0340265f705b14b6d32b9829c1cb33d45e # v7.0.8
+        with:
+          token: ${{ secrets.GRASCI_WORKFLOW_UPDATE }}
+          commit-message: Update TPIP report
+          title: ':robot: [TPIP] Update TPIP report'
+          body: |
+            Third-party IP report updates
+            **Automated Changes:**
+            - updated third party json file
+            - Regenerated TPIP report
+          branch: update-tpip
+          delete-branch: true
+          labels: TPIP
+          draft: true
