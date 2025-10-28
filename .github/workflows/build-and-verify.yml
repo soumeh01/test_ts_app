@@ -71,12 +71,16 @@ defaults:
   run:
     shell: bash
 
+env:
+  CALLER_DIR: 'caller-repository'
+  WORKFLOW_DIR: 'test_ts_app'
+
 jobs:
   configure-ci:
     runs-on: ubuntu-latest
     outputs:
       working-dir: ${{ steps.get-working-dir.outputs.dir }}
-      has-e2e-tests: ${{ steps.check-e2e-test-script.outputs.has-e2e-script }}
+      has-e2e-tests: ${{ steps.check-e2e-test-command.outputs.has-e2e-script }}
       default-matrix: ${{ steps.load-default-matrix.outputs.matrix }}
     steps:
       - name: Harden the runner (Audit all outbound calls)
@@ -87,13 +91,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
+          repository: ${{ github.event.repository.full_name }}
+          path: ${{ env.CALLER_DIR }}
+
+      - name: Checkout repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
           repository: soumeh01/test_ts_app
-          path: workflow-repo
+          path: ${{ env.WORKFLOW_DIR }}
 
       - name: Load default platform matrix
         id: load-default-matrix
         run: |
-          matrix=$(cat workflow-repo/.github/platform-matrix.json | jq -c .)
+          matrix=$(cat ${{ env.WORKFLOW_DIR }}/.github/platform-matrix.json | jq -c .)
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
       - name: Get working directory
@@ -104,11 +114,17 @@ jobs:
           else
             echo "dir=${{ inputs.working-directory }}" >> "$GITHUB_OUTPUT"
           fi
+
       - name: Check for E2E Test Script
-        id: check-e2e-test-script
+        working-directory: ${{ env.CALLER_DIR }}
+        id: check-e2e-test-command
         run: |
           if grep -qE '"test:e2e"\s*:' package.json; then
+            echo "✅ E2E test script found in package.json"
             echo "has-e2e-script=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "❌ No E2E test script found in package.json"
+            echo "has-e2e-script=false" >> "$GITHUB_OUTPUT"
           fi
 
   build:
@@ -213,22 +229,19 @@ jobs:
             ./dist
           retention-days: 1
 
-      # - name: Create package
-      #   working-directory: ./${{ inputs.working-directory }}
-      #   run: |
-      #     if [ "${{ inputs.package-manager }}" = "npm" ]; then
-      #       npm run package
-      #     else
-      #       yarn package
-      #     fi
-
-      # - name: Upload package
-      #   if: success()
-      #   uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
-      #   with:
-      #     name: vsix-package-${{ inputs.package-manager }}-${{ matrix.platform }}-${{ matrix.arch }}
-      #     path: ./*.vsix
-      #     retention-days: 1
+      - name: Commit changelog
+        if: |
+          (github.event_name == 'release') &&
+          (matrix.arch == 'amd64') &&
+          (startsWith(matrix.platform, 'ubuntu'))
+        run: |
+          sed -i '3i ## Unreleased\n' CHANGELOG.md
+          git checkout main
+          git config user.name github-actions
+          git config user.email git@github.com
+          git add CHANGELOG.md
+          git commit -m "Update CHANGELOG.md after release"
+          git push
 
   test:
     needs: [ configure-ci ]
@@ -277,17 +290,17 @@ jobs:
           name: test-coverage-${{ inputs.package-manager }}
           path: ./coverage
 
-      # - name: End-to-end Test
-      #   if: needs.configure-ci.outputs.has-e2e-tests == 'true'
-      #   run: ${{ matrix.e2e-command }}
+      - name: End-to-end Test
+        if: needs.configure-ci.outputs.has-e2e-tests == 'true'
+        run: ${{ inputs.package-manager }} run e2e
 
-      # - name: Upload screenshots as artifacts
-      #   uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
-      #   if: always()
-      #   with:
-      #     name: e2e-test-screenshots-${{ matrix.os }}
-      #     path: ./e2e-screenshots/*.png
-      #     if-no-files-found: ignore
+      - name: Upload screenshots as artifacts
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: e2e-test-screenshots-${{ matrix.os }}
+          path: ./e2e-screenshots/*.png
+          if-no-files-found: ignore
 
   publish-coverage:
     name: Publish Coverage
