@@ -146,7 +146,7 @@ jobs:
 
       - name: Set version
         if: |
-          false && (matrix.arch == 'amd64') &&
+          (matrix.arch == 'amd64') &&
           (startsWith(matrix.platform, 'ubuntu'))
         run: |
           case ${{ github.event_name }} in
