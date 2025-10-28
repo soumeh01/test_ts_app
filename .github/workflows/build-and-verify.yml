@@ -292,7 +292,7 @@ jobs:
 
       - name: End-to-end Test
         if: needs.configure-ci.outputs.has-e2e-tests == 'true'
-        run: ${{ inputs.package-manager }} run e2e
+        run: ${{ inputs.package-manager }} run test:e2e
 
       - name: Upload screenshots as artifacts
         if: always()
