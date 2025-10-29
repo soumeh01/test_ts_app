@@ -34,6 +34,8 @@ jobs:
     permissions:
       contents: write  # Required for the publish job in the reusable workflow
     uses: ./.github/workflows/build-and-verify.yml
+    secrets:
+      PR_TOKEN: ${{ secrets.PAT_TOKEN }} 
     with:
       build-matrix: '[{"platform":"windows-2022","arch":"amd64"},{"platform":"ubuntu-24.04","arch":"amd64"}]'
       test-matrix: '[{"platform":"windows-2022","arch":"amd64"},{"platform":"ubuntu-24.04","arch":"amd64"}]'
@@ -54,6 +56,8 @@ jobs:
     permissions:
       contents: write  # Required for the publish job in the reusable workflow
     uses: ./.github/workflows/build-and-verify.yml
+    secrets:
+      PR_TOKEN: ${{ secrets.PAT_TOKEN }} 
     with:
       package-manager: yarn
       node-version-file: './package.json'
