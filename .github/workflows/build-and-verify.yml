@@ -160,7 +160,10 @@ jobs:
           package-manager-cache: false
           always-auth: true
 
-      - name: Set version
+      # calculate version and set in package.json
+      # update version of package.json npm version --no-git-tag-version v1.23.0
+      # update version in changelog
+      - name: Set version in changelog and package.json
         if: |
           (matrix.arch == 'amd64') &&
           (startsWith(matrix.platform, 'ubuntu'))
@@ -168,24 +171,41 @@ jobs:
           case ${{ github.event_name }} in
             release)
               TAG="${{ github.event.release.tag_name }}"
-              yarn version --no-git-tag-version --new-version "${TAG#v}"
+              ${{ inputs.package-manager }} version --no-git-tag-version --new-version "${TAG#v}"
               ;;
             pull_request)
               DESCRIBE=$(git describe --tags | grep -Eo 'v[0-9]+\.[0-9]+\.[0-9]+')
               QUALIFIER=$(git describe --tags | grep -Eo '\-g[0-9a-f]+$')
-              yarn version -s --no-git-tag-version --new-version "${DESCRIBE#v}"
-              yarn version --no-git-tag-version --prepatch --preid "pr${{ github.event.number }}${QUALIFIER}"
+              ${{ inputs.package-manager }} version -s --no-git-tag-version --new-version "${DESCRIBE#v}"
+              ${{ inputs.package-manager }} version --no-git-tag-version --prepatch --preid "pr${{ github.event.number }}${QUALIFIER}"
               ;;
             *)
               DESCRIBE=$(git describe --tags | grep -Eo 'v[0-9]+\.[0-9]+\.[0-9]+')
               QUALIFIER=$(git describe --tags | grep -Eo '[0-9]+\-g[0-9a-f]+$')
-              yarn version -s --no-git-tag-version --new-version "${DESCRIBE#v}"
-              yarn version --no-git-tag-version --prepatch --preid "${{ github.ref_name }}${QUALIFIER}"
+              ${{ inputs.package-manager }} version -s --no-git-tag-version --new-version "${DESCRIBE#v}"
+              ${{ inputs.package-manager }} version --no-git-tag-version --prepatch --preid "${{ github.ref_name }}${QUALIFIER}"
               ;;
           esac
           VERSION="$(jq -r ".version" < package.json)"
           sed -i "s/## Unreleased/## ${VERSION}/" CHANGELOG.md
           echo "Version is ${VERSION}"
+
+      - name: Create version bump patch
+        if: |
+          (matrix.arch == 'amd64') &&
+          (startsWith(matrix.platform, 'ubuntu'))
+        run: git diff > new-version.patch
+
+      - name: Store version bump patch
+        if: |
+          (matrix.arch == 'amd64') &&
+          (startsWith(matrix.platform, 'ubuntu'))
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: new-version-patch
+          path: ./new-version.patch
+          if-no-files-found: ignore
+          retention-days: 1
 
       - name: Install dependencies
         working-directory: ./${{ inputs.working-directory }}
