@@ -6,6 +6,9 @@ on:
       QLTY_COVERAGE_TOKEN:
         required: false
         description: This secret is needed for Qlty coverage upload if enabled.
+      PR_TOKEN:
+        required: false
+        description: 'Personal Access Token with repo permissions to create PRs.'
     inputs:
       node-version-file:
         description: 'package.json file'
@@ -71,12 +74,16 @@ defaults:
   run:
     shell: bash
 
+env:
+  CALLER_DIR: 'caller-repository'
+  WORKFLOW_DIR: 'test_ts_app'
+
 jobs:
   configure-ci:
     runs-on: ubuntu-latest
     outputs:
       working-dir: ${{ steps.get-working-dir.outputs.dir }}
-      has-e2e-tests: ${{ steps.check-e2e-test-script.outputs.has-e2e-script }}
+      has-e2e-tests: ${{ steps.check-e2e-test-command.outputs.has-e2e-script }}
       default-matrix: ${{ steps.load-default-matrix.outputs.matrix }}
     steps:
       - name: Harden the runner (Audit all outbound calls)
@@ -87,13 +94,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
+          repository: ${{ github.event.repository.full_name }}
+          path: ${{ env.CALLER_DIR }}
+
+      - name: Checkout repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
           repository: soumeh01/test_ts_app
-          path: workflow-repo
+          path: ${{ env.WORKFLOW_DIR }}
 
       - name: Load default platform matrix
         id: load-default-matrix
         run: |
-          matrix=$(cat workflow-repo/.github/platform-matrix.json | jq -c .)
+          matrix=$(cat ${{ env.WORKFLOW_DIR }}/.github/platform-matrix.json | jq -c .)
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
       - name: Get working directory
@@ -104,11 +117,17 @@ jobs:
           else
             echo "dir=${{ inputs.working-directory }}" >> "$GITHUB_OUTPUT"
           fi
+
       - name: Check for E2E Test Script
-        id: check-e2e-test-script
+        working-directory: ${{ env.CALLER_DIR }}
+        id: check-e2e-test-command
         run: |
           if grep -qE '"test:e2e"\s*:' package.json; then
+            echo "✅ E2E test script found in package.json"
             echo "has-e2e-script=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "❌ No E2E test script found in package.json"
+            echo "has-e2e-script=false" >> "$GITHUB_OUTPUT"
           fi
 
   build:
@@ -144,7 +163,10 @@ jobs:
           package-manager-cache: false
           always-auth: true
 
-      - name: Set version
+      # calculate version and set in package.json
+      # update version of package.json npm version --no-git-tag-version v1.23.0
+      # update version in changelog
+      - name: Set version in changelog and package.json
         if: |
           (matrix.arch == 'amd64') &&
           (startsWith(matrix.platform, 'ubuntu'))
@@ -152,24 +174,41 @@ jobs:
           case ${{ github.event_name }} in
             release)
               TAG="${{ github.event.release.tag_name }}"
-              yarn version --no-git-tag-version --new-version "${TAG#v}"
+              ${{ inputs.package-manager }} version --no-git-tag-version --new-version "${TAG#v}"
               ;;
             pull_request)
               DESCRIBE=$(git describe --tags | grep -Eo 'v[0-9]+\.[0-9]+\.[0-9]+')
               QUALIFIER=$(git describe --tags | grep -Eo '\-g[0-9a-f]+$')
-              yarn version -s --no-git-tag-version --new-version "${DESCRIBE#v}"
-              yarn version --no-git-tag-version --prepatch --preid "pr${{ github.event.number }}${QUALIFIER}"
+              ${{ inputs.package-manager }} version -s --no-git-tag-version --new-version "${DESCRIBE#v}"
+              ${{ inputs.package-manager }} version --no-git-tag-version --prepatch --preid "pr${{ github.event.number }}${QUALIFIER}"
               ;;
             *)
               DESCRIBE=$(git describe --tags | grep -Eo 'v[0-9]+\.[0-9]+\.[0-9]+')
               QUALIFIER=$(git describe --tags | grep -Eo '[0-9]+\-g[0-9a-f]+$')
-              yarn version -s --no-git-tag-version --new-version "${DESCRIBE#v}"
-              yarn version --no-git-tag-version --prepatch --preid "${{ github.ref_name }}${QUALIFIER}"
+              ${{ inputs.package-manager }} version -s --no-git-tag-version --new-version "${DESCRIBE#v}"
+              ${{ inputs.package-manager }} version --no-git-tag-version --prepatch --preid "${{ github.ref_name }}${QUALIFIER}"
               ;;
           esac
           VERSION="$(jq -r ".version" < package.json)"
           sed -i "s/## Unreleased/## ${VERSION}/" CHANGELOG.md
           echo "Version is ${VERSION}"
+
+      - name: Create version bump patch
+        if: |
+          (matrix.arch == 'amd64') &&
+          (startsWith(matrix.platform, 'ubuntu'))
+        run: git diff > new-version.patch
+
+      - name: Store version bump patch
+        if: |
+          (matrix.arch == 'amd64') &&
+          (startsWith(matrix.platform, 'ubuntu'))
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: new-version-patch-${{ inputs.package-manager }}
+          path: ./new-version.patch
+          if-no-files-found: ignore
+          retention-days: 1
 
       - name: Install dependencies
         working-directory: ./${{ inputs.working-directory }}
@@ -212,23 +251,6 @@ jobs:
             ./package.json
             ./dist
           retention-days: 1
-
-      # - name: Create package
-      #   working-directory: ./${{ inputs.working-directory }}
-      #   run: |
-      #     if [ "${{ inputs.package-manager }}" = "npm" ]; then
-      #       npm run package
-      #     else
-      #       yarn package
-      #     fi
-
-      # - name: Upload package
-      #   if: success()
-      #   uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
-      #   with:
-      #     name: vsix-package-${{ inputs.package-manager }}-${{ matrix.platform }}-${{ matrix.arch }}
-      #     path: ./*.vsix
-      #     retention-days: 1
 
   test:
     needs: [ configure-ci ]
@@ -277,17 +299,17 @@ jobs:
           name: test-coverage-${{ inputs.package-manager }}
           path: ./coverage
 
-      # - name: End-to-end Test
-      #   if: needs.configure-ci.outputs.has-e2e-tests == 'true'
-      #   run: ${{ matrix.e2e-command }}
+      - name: End-to-end Test
+        if: needs.configure-ci.outputs.has-e2e-tests == 'true'
+        run: ${{ inputs.package-manager }} run test:e2e
 
-      # - name: Upload screenshots as artifacts
-      #   uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
-      #   if: always()
-      #   with:
-      #     name: e2e-test-screenshots-${{ matrix.os }}
-      #     path: ./e2e-screenshots/*.png
-      #     if-no-files-found: ignore
+      - name: Upload screenshots as artifacts
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: e2e-test-screenshots-${{ matrix.os }}
+          path: ./e2e-screenshots/*.png
+          if-no-files-found: ignore
 
   publish-coverage:
     name: Publish Coverage
@@ -389,11 +411,71 @@ jobs:
           path: ./*.vsix
           retention-days: 1
 
+  push-new-version:
+    name: Push New Version
+    runs-on: [ubuntu-latest]
+    if: github.event_name == 'release'
+    needs: [ build ]
+    permissions:
+      contents: write
+    outputs:
+      release_commit: ${{ steps.commit-version.outputs.release_commit }}
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
+        with:
+          egress-policy: audit
+
+      - name: Checkout repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          submodules: true
+          fetch-depth: 0
+
+      - name: Download version bump patch
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: new-version-patch-${{ inputs.package-manager }}
+          path: ~/patches
+
+      - name: Apply version bump patch
+        run: git apply ~/patches/new-version.patch
+
+      - name: Create Pull Request
+        id: cpr
+        uses: peter-evans/create-pull-request@271a8d0340265f705b14b6d32b9829c1cb33d45e # v7.0.8
+        with:
+          base: main
+          token: ${{ secrets.PR_TOKEN }}
+          commit-message: 'Version bump to ${{ github.event.release.tag_name }} [skip ci]'
+          title: ':rocket: Version Bump to release version ${{ github.event.release.tag_name }} [skip ci]'
+          body: |
+            Automated version bump PR created during release process.
+
+            - Updates package.json version to ${{ github.event.release.tag_name }}
+            - Updates CHANGELOG.md with release version
+
+            This PR should be merged to keep the main branch in sync with the release.
+
+            **Note:** CI is skipped for this automated PR to avoid unnecessary builds.
+          branch: release-version-bump-${{ github.event.release.tag_name }}
+          delete-branch: true
+          labels: automated-pr
+          draft: true
+
+      - name: Store release commit SHA
+        id: commit-version
+        run: |
+          echo "📝 Pull request created: ${{ steps.cpr.outputs.pull-request-url }}"
+          echo "🔗 Pull request number: ${{ steps.cpr.outputs.pull-request-number }}"
+          echo "📋 Head SHA: ${{ steps.cpr.outputs.pull-request-head-sha }}"
+          echo "release_commit=${{ steps.cpr.outputs.pull-request-head-sha }}" >> "$GITHUB_OUTPUT"
+
   release:
     name: Publish release
     runs-on: [ubuntu-latest]
     if: github.event_name == 'release'
-    needs: package
+    needs: [ package, push-new-version ]
     permissions:
       contents: write  # for softprops/action-gh-release to create a GitHub release
     steps:
@@ -413,18 +495,16 @@ jobs:
           pattern: test-coverage-${{ inputs.package-manager }}
           path: test-coverage-${{ inputs.package-manager }}
 
-      - name: Debug log
-        run: ls -l
-
       - name: Zip test coverage
         run: |
           ls -l
           zip -r test-coverage.zip *
         working-directory: test-coverage-${{ inputs.package-manager }}
 
-      - name: Attach packages
+      - name: Release
         uses: softprops/action-gh-release@6da8fa9354ddfdc4aeace5fc48d7f679b5214090 # v2.4.1
         with:
           files: |
             **/*.vsix
             test-coverage-${{ inputs.package-manager }}/test-coverage.zip
+          target_commitish: ${{ needs.push-new-version.outputs.release_commit }}
