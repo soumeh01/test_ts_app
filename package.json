@@ -34,7 +34,9 @@
     "lint": "echo \"✅ Lint check completed!\"",
     "test": "jest --coverage",
     "test:e2e": "echo \"✅ E2E test completed!\"",
-    "package": "npm run build && vsce package --no-dependencies --allow-star-activation --allow-missing-repository --skip-license"
+    "package": "npm run build && vsce package --no-dependencies --allow-star-activation --allow-missing-repository --skip-license",
+    "tpip": "tsx scripts/tpip-reporter.ts --header ./scripts/tpip-header.md docs/third-party-licenses.json ./tpip.md",
+    "tpip:update": "tsx scripts/update-tpip docs/third-party-licenses.json"
   },
   "devDependencies": {
     "typescript": "^5.6.3",
