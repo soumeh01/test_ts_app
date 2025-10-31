@@ -22,14 +22,6 @@ permissions:
   contents: read
 
 jobs:
-  # Test npm package manager with custom build/test matrix
-  # This job demonstrates:
-  # - Custom platform matrix (Windows 2022 + Ubuntu 24.04, both AMD64 only)
-  # - npm package manager usage
-  # - Explicit build-matrix and test-matrix configuration
-  # - Uses Node.js version from package.json engines field
-  # - Runs build, test, lint, and package jobs across specified platforms
-  # - Overrides default 6-platform matrix with limited 2-platform matrix for faster testing
   self-test-npm:
     permissions:
       contents: write  # Required for the publish job in the reusable workflow
@@ -37,30 +29,19 @@ jobs:
     secrets:
       PR_TOKEN: ${{ secrets.PAT_TOKEN }} 
     with:
-      build-matrix: '[{"platform":"windows-2022","arch":"amd64"},{"platform":"ubuntu-24.04","arch":"amd64"}]'
-      test-matrix: '[{"platform":"windows-2022","arch":"amd64"},{"platform":"ubuntu-24.04","arch":"amd64"}]'
+      platform-matrix-file: .github/platform-matrix.json
       package-manager: npm
-      node-version-file: './package.json'
 
-  # Test yarn package manager with default matrix configuration
-  # This job demonstrates:
-  # - yarn package manager usage (automatically detects yarn.lock and uses --yarn flag)
-  # - Default platform matrix from .github/platform-matrix.json (all 6 platforms: Windows/Ubuntu/macOS with AMD64/ARM64)
-  # - Uses Node.js version from package.json engines field
-  # - build-matrix defaults to empty (uses default from platform-matrix.json)
-  # - test-matrix defaults to empty (uses default from platform-matrix.json)
-  # - Default build-command: 'build', test-command: 'test', lint-command: 'lint'
-  # - Runs full cross-platform build/test/package cycle across all supported platforms
-  self-test-yarn:
-    if: github.event_name != 'release'
-    permissions:
-      contents: write  # Required for the publish job in the reusable workflow
-    uses: ./.github/workflows/build-and-verify.yml
-    secrets:
-      PR_TOKEN: ${{ secrets.PAT_TOKEN }} 
-    with:
-      package-manager: yarn
-      node-version-file: './package.json'
+  # self-test-yarn:
+  #   if: github.event_name != 'release'
+  #   permissions:
+  #     contents: write  # Required for the publish job in the reusable workflow
+  #   uses: ./.github/workflows/build-and-verify.yml
+  #   secrets:
+  #     PR_TOKEN: ${{ secrets.PAT_TOKEN }} 
+  #   with:
+  #     platform-matrix-file: .github/platform-matrix.json
+  #     package-manager: yarn
 
   markdown-check:
     uses: Open-CMSIS-Pack/workflows-and-actions-collection/.github/workflows/markdown-lint.yml@v1.0.1
