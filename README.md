@@ -1,18 +1,18 @@
-# VS Code Extension CI/CD Template
+# TypeScript Basic App
 
-A comprehensive TypeScript VS Code extension project with advanced CI/CD workflows supporting
-cross-platform builds, testing, and VSIX packaging.
+A comprehensive TypeScript VS Code extension project with advanced CI/CD workflows, cross-platform builds,
+testing, VSIX packaging, and Third-Party Intellectual Property (TPIP) license compliance tracking.
 
 ## Features
 
-- ✅ **TypeScript 5.6.3** with ES2022 target configuration
+- ✅ **TypeScript 5.6.3** with ES2022 target and ES modules configuration
 - ✅ **Jest Testing** with coverage reporting and TypeScript support
-- ✅ **ESLint** for code quality and consistency
+- ✅ **License Compliance** with TPIP (Third-Party IP) tracking and reporting
 - ✅ **Cross-Platform VSIX Packaging** for 6 platform combinations
 - ✅ **GitHub Actions** with matrix builds and reusable workflows
-- ✅ **Dual Package Manager Support** (npm and yarn)
+- ✅ **Dual Package Manager Support** (npm and yarn with auto-detection)
 - ✅ **Security Hardening** with Step Security runner protection
-- ✅ **Modern Tooling** with latest GitHub Actions versions
+- ✅ **Modern Tooling** with latest GitHub Actions versions and TSX runtime
 
 ## Quick Start
 
@@ -39,15 +39,24 @@ npm run lint
 # or
 yarn lint
 
+# Clean build artifacts
+npm run clean
+
 # Package as VSIX (detects package manager automatically)
 npm run package
 # or
 yarn package
+
+# Update TPIP license tracking
+npm run tpip:update
+
+# Generate TPIP license report
+npm run tpip
 ```
 
 ### CI/CD Integration
 
-This project includes production-ready GitHub Actions workflows:
+This project includes production-ready GitHub Actions workflows with platform matrix support:
 
 ```yaml
 # .github/workflows/ci.yml
@@ -61,7 +70,7 @@ jobs:
     uses: soumeh01/test_ts_app/.github/workflows/build-and-verify.yml@main
     with:
       package-manager: 'npm'
-      node-version: '20.18.0'
+      platform-matrix-file: '.github/platform-matrix.json'
 ```
 
 ## Project Structure
@@ -71,6 +80,12 @@ jobs:
 ├── src/
 │   └── index.ts                      # Extension entry point
 ├── dist/                             # Build output
+├── scripts/
+│   ├── update-tpip.ts                # TPIP license tracking updater
+│   └── tpip-reporter.ts              # TPIP license report generator
+├── docs/
+│   ├── third-party-licenses.json     # TPIP license database
+│   └── tpip-header.md                # TPIP report header template
 ├── .github/
 │   ├── workflows/
 │   │   ├── build-and-verify.yml      # Reusable CI/CD workflow
@@ -80,7 +95,8 @@ jobs:
 │   └── WORKFLOWS.md                 # Workflow documentation
 ├── package.json                     # Project configuration
 ├── tsconfig.json                    # TypeScript configuration
-└── jest.config.js                   # Jest testing configuration
+├── jest.config.js                   # Jest testing configuration
+└── tpip.md                          # Generated TPIP license report
 ```
 
 ## GitHub Actions Workflows
@@ -108,15 +124,19 @@ See [WORKFLOWS.md](.github/WORKFLOWS.md) for detailed documentation.
 
 ### Package.json Scripts
 
-Essential scripts for development and CI/CD:
+Essential scripts for development, CI/CD, and license compliance:
 
 ```json
 {
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "clean": "git clean -f -x ./node_modules ./dist ./coverage ./.vscode-test *.vsix",
     "test": "jest --coverage",
+    "test:e2e": "echo \"✅ E2E test completed!\"",
     "lint": "echo \"✅ Lint check completed!\"",
-    "package": "npm run build && vsce package"
+    "package": "npm run build && vsce package --no-dependencies --allow-star-activation --allow-missing-repository --skip-license",
+    "tpip:update": "tsx scripts/update-tpip docs/third-party-licenses.json",
+    "tpip": "tsx scripts/tpip-reporter.ts --header ./scripts/tpip-header.md docs/third-party-licenses.json ./tpip.md"
   }
 }
 ```
@@ -125,29 +145,67 @@ Essential scripts for development and CI/CD:
 
 ```json
 {
+  "name": "ts-basic-app",
+  "displayName": "TypeScript Basic App",
+  "version": "1.1.0",
+  "type": "module",
   "engines": {
     "vscode": "^1.63.0",
-    "node": "^20.18.0"
+    "node": "^20.18.0",
+    "yarn": "^1.22.0"
   },
   "activationEvents": ["onStartupFinished"],
   "contributes": {}
 }
 ```
 
+## TPIP License Compliance
+
+This project includes comprehensive Third-Party Intellectual Property (TPIP) license tracking:
+
+### What is TPIP?
+
+TPIP (Third-Party Intellectual Property) tracking ensures legal compliance by:
+
+- Cataloging all runtime dependencies and their licenses
+- Tracking license changes when dependencies are updated
+- Generating compliance reports for legal review
+- Ensuring proper attribution of third-party code
+
+### TPIP Commands
+
+```bash
+# Update TPIP database with current dependencies
+npm run tpip:update
+
+# Generate TPIP license compliance report
+npm run tpip
+```
+
+### TPIP Files
+
+- `docs/third-party-licenses.json` - License database
+- `scripts/tpip-header.md` - Report header template
+- `tpip.md` - Generated compliance report
+- `scripts/update-tpip.ts` - License tracking updater
+- `scripts/tpip-reporter.ts` - Report generator
+
 ## Dependencies
 
 ### Production Dependencies
 
-- **vscode**: VS Code extension API typings
+Currently none - this is a development template with no runtime dependencies.
 
 ### Development Dependencies
 
-- **typescript**: ^5.6.3 - TypeScript compiler
-- **jest**: ^29.7.0 - Testing framework
-- **ts-jest**: TypeScript preprocessor for Jest
-- **@types/jest**: TypeScript definitions for Jest
-- **@vscode/vsce**: ^3.1.0 - VS Code extension packaging
-- **yargs**: Command-line argument parsing
+- **typescript**: ^5.6.3 - TypeScript compiler with ES2022 support
+- **jest**: ^29.7.0 - Testing framework with coverage reporting
+- **ts-jest**: ^29.1.0 - TypeScript preprocessor for Jest
+- **@types/jest**: ^29.5.0 - TypeScript definitions for Jest
+- **@types/node**: ^20.11.30 - Node.js TypeScript definitions
+- **@vscode/vsce**: ^3.1.0 - VS Code extension packaging tool
+- **yargs**: ^18.0.0 - Command-line argument parsing for TPIP scripts
+- **@types/yargs**: ^17.0.33 - TypeScript definitions for yargs
 
 ## License
 

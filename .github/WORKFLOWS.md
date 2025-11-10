@@ -1,303 +1,262 @@
-# GitHub Reusable Workflows
+# Build and Verify Workflow Usage
 
-This repository contains a comprehensive reusable GitHub Actions workflow for TypeScript/Node.js projects that supports both npm and yarn package managers, cross-platform builds, testing, and VS Code extension packaging.
+This document explains how to use the `build-and-verify.yml` reusable workflow for cross-platform TypeScript VS Code extension builds with comprehensive CI/CD features.
 
-## Available Workflows
+## Required Platform Matrix File
 
-### Build and Verify Workflow (`build-and-verify.yml`)
+The workflow **requires** a platform matrix file to be provided. There is no default matrix, ensuring that each caller explicitly defines their target platforms. This approach provides better control and prevents unexpected platform builds.
 
-A comprehensive workflow that handles building, testing, linting, and packaging across multiple platforms with automatic platform matrix detection.
+### Platform Matrix File Format
 
-#### Features
+Create a JSON file in your repository with the following format:
 
-- ✅ **Cross-platform builds**: Windows, Ubuntu, macOS (Intel & ARM)
-- ✅ **Dual package manager support**: npm and yarn with automatic detection
-- ✅ **VS Code extension packaging**: Creates platform-specific VSIX files
-- ✅ **Automated testing**: Jest with coverage reporting
-- ✅ **Quality checks**: Linting and build verification
-- ✅ **Configurable matrix**: Custom or default 6-platform matrix
-- ✅ **Release publishing**: Automatic GitHub release creation
-- ✅ **Security hardening**: Step Security runner hardening
+```json
+[
+  {
+    "platform": "windows-2022",
+    "arch": "amd64"
+  },
+  {
+    "platform": "ubuntu-24.04",
+    "arch": "amd64"
+  },
+  {
+    "platform": "macos-14",
+    "arch": "arm64"
+  }
+]
+```
 
-#### Inputs
+### Supported Platforms
 
-| Input | Description | Required | Default | Type |
-|-------|-------------|----------|---------|------|
-| `node-version-file` | package.json file for Node.js version | Yes | `'./package.json'` | string |
-| `package-manager` | Package manager (npm/yarn) | No | `'npm'` | string |
-| `working-directory` | Working directory for build | No | `'.'` | string |
-| `build-matrix` | JSON array of build combinations | No | Uses default matrix | string |
-| `test-matrix` | JSON array of test combinations | No | Uses default matrix | string |
-| `build-command` | Build script name | No | `'build'` | string |
-| `test-command` | Test script name | No | `'test'` | string |
-| `lint-command` | Lint script name | No | `'lint'` | string |
-| `enable-qlty` | Enable Qlty coverage upload | No | `false` | boolean |
-| `download-script-name` | Path to download script for tools | No | - | string |
+- **Ubuntu**: `ubuntu-20.04`, `ubuntu-22.04`, `ubuntu-24.04` (latest recommended)
+- **Windows**: `windows-2019`, `windows-2022` (2022 recommended)
+- **macOS**: `macos-12`, `macos-13`, `macos-14`, `macos-15` (14+ for arm64)
 
-#### Secrets
+### Supported Architectures
 
-| Secret | Description | Required |
-|--------|-------------|----------|
-| `QLTY_COVERAGE_TOKEN` | Token for Qlty coverage upload | No |
-
-#### Default Platform Matrix
-
-The workflow uses a default 6-platform matrix from `.github/platform-matrix.json`:
-
-- **Windows Server 2022**: AMD64 & ARM64
-- **Ubuntu 24.04**: AMD64 & ARM64  
-- **macOS 15 Intel**: AMD64
-- **macOS 14**: ARM64 (Apple Silicon)
-
-#### Jobs Overview
-
-1. **configure-ci**: Loads platform matrix and configuration
-2. **build**: Cross-platform building with artifact upload
-3. **test**: Cross-platform testing with coverage reporting
-4. **package**: Creates platform-specific VSIX packages
-5. **publish-coverage**: Uploads coverage to Qlty (optional)
-6. **publish**: Creates GitHub releases with assets (release events only)
+- `amd64` (x86_64) - Intel/AMD 64-bit
+- `arm64` - ARM 64-bit (Apple Silicon, AWS Graviton)
 
 ## Usage Examples
 
-### Basic Usage with npm
+### Basic Usage
 
 ```yaml
-name: Build and Test
+name: CI/CD Pipeline
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    uses: soumeh01/test_ts_app/.github/workflows/build-and-verify.yml@main
+    with:
+      platform-matrix-file: '.github/platform-matrix.json'
+```
+
+### Advanced Usage
+
+```yaml
+name: Advanced CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
   build-and-test:
     permissions:
-      contents: write  # Required for publish job
+      contents: write  # Required for release version bumps
     uses: soumeh01/test_ts_app/.github/workflows/build-and-verify.yml@main
     with:
-      package-manager: 'npm'
-      node-version-file: './package.json'
-```
-
-### Using yarn with Default Platform Matrix
-
-```yaml
-jobs:
-  build-and-test-yarn:
-    permissions:
-      contents: write
-    uses: soumeh01/test_ts_app/.github/workflows/build-and-verify.yml@main
-    with:
+      platform-matrix-file: 'config/platforms.json'
       package-manager: 'yarn'
-      node-version-file: './package.json'
-      # Uses default 6-platform matrix (Windows/Ubuntu/macOS with AMD64/ARM64)
-```
-
-### Custom Platform Matrix
-
-```yaml
-jobs:
-  limited-platforms:
-    permissions:
-      contents: write
-    uses: soumeh01/test_ts_app/.github/workflows/build-and-verify.yml@main
-    with:
-      package-manager: 'npm'
-      build-matrix: '[{"platform":"windows-2022","arch":"amd64"},{"platform":"ubuntu-24.04","arch":"amd64"}]'
-      test-matrix: '[{"platform":"windows-2022","arch":"amd64"},{"platform":"ubuntu-24.04","arch":"amd64"}]'
-      node-version-file: './package.json'
-```
-
-### With Coverage Upload
-
-```yaml
-jobs:
-  build-with-coverage:
-    permissions:
-      contents: write
-    uses: soumeh01/test_ts_app/.github/workflows/build-and-verify.yml@main
+      working-directory: './app'
+      build-command: 'build:prod'
+      test-command: 'test:ci'
+      lint-command: 'lint:check'
+      enable-qlty: true
     secrets:
       QLTY_COVERAGE_TOKEN: ${{ secrets.QLTY_COVERAGE_TOKEN }}
-    with:
-      package-manager: 'npm'
-      enable-qlty: true
-      node-version-file: './package.json'
+      PR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-### Monorepo Usage
+### Platform-Specific Configurations
 
-```yaml
-jobs:
-  backend:
-    permissions:
-      contents: write
-    uses: soumeh01/test_ts_app/.github/workflows/build-and-verify.yml@main
-    with:
-      working-directory: './backend'
-      package-manager: 'npm'
-      node-version-file: './backend/package.json'
-
-  frontend:
-    permissions:
-      contents: write
-    uses: soumeh01/test_ts_app/.github/workflows/build-and-verify.yml@main
-    with:
-      working-directory: './frontend'
-      package-manager: 'yarn'
-      node-version-file: './frontend/package.json'
-```
-
-## Platform Matrix Configuration
-
-### Default Matrix
-
-If no custom matrix is provided, the workflow uses a comprehensive 6-platform matrix from `.github/platform-matrix.json`:
+#### Minimal (Single Platform)
 
 ```json
 [
-  {"platform": "windows-2022", "arch": "amd64"},
-  {"platform": "windows-2022", "arch": "arm64"},
-  {"platform": "ubuntu-24.04", "arch": "amd64"},
-  {"platform": "ubuntu-24.04", "arch": "arm64"},
-  {"platform": "macos-15-intel", "arch": "amd64"},
-  {"platform": "macos-14", "arch": "arm64"}
-]
-```
-
-### Custom Matrix Format
-
-Both `build-matrix` and `test-matrix` accept JSON arrays with platform/architecture combinations:
-
-```json
-[
-  {"platform": "windows-2022", "arch": "amd64"},
-  {"platform": "ubuntu-24.04", "arch": "amd64"}
-]
-```
-
-- **platform**: GitHub Actions runner (windows-2022, ubuntu-24.04, macos-15-intel, macos-14)
-- **arch**: Target architecture (amd64, arm64)
-
-## Required Package.json Configuration
-
-### Minimal Scripts
-
-```json
-{
-  "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "test": "jest --coverage",
-    "lint": "echo \"✅ Lint check completed!\"",
-    "package": "npm run build && vsce package"
+  {
+    "platform": "ubuntu-24.04",
+    "arch": "amd64"
   }
-}
+]
 ```
 
-### VS Code Extension Support
+#### Cross-Platform (Current Default)
 
-For VS Code extension projects, include:
+This is the current configuration used by this repository:
 
 ```json
-{
-  "engines": {
-    "vscode": "^1.63.0",
-    "node": "^20.18.0"
+[
+  {
+    "platform": "windows-2022",
+    "arch": "amd64"
   },
-  "activationEvents": ["onStartupFinished"],
-  "contributes": {}
-}
+  {
+    "platform": "ubuntu-24.04",
+    "arch": "amd64"
+  },
+  {
+    "platform": "macos-14",
+    "arch": "arm64"
+  }
+]
 ```
 
-## Package Manager Detection
+#### Comprehensive (All Platforms & Architectures)
 
-The workflow automatically handles package manager differences:
-
-### npm Configuration
-
-- Uses `npm ci` for dependency installation
-- Adds `--no-yarn` flag to vsce package command
-- Respects package-lock.json for reproducible builds
-
-### yarn Configuration
-
-- Uses `yarn --frozen-lockfile` for dependency installation
-- Adds `--yarn` flag to vsce package command
-- Respects yarn.lock for reproducible builds
-
-## Artifact Outputs
-
-The workflow produces several artifacts:
-
-- **dist-{package-manager}**: Built TypeScript output and project files
-- **test-coverage-{package-manager}**: Jest coverage reports
-- **vsix-package-{package-manager}-{platform}-{arch}**: Platform-specific VSIX packages
-
-## Self-Testing
-
-The repository includes `self-test.yml` which demonstrates two usage patterns:
-
-1. **Custom Matrix**: Limited to 2 platforms for faster CI
-2. **Default Matrix**: Full 6-platform cross-platform testing
-
-## Key Features
-
-- ✅ **Cross-Platform VSIX Packaging**: Generates platform-specific extension packages
-- ✅ **Dual Package Manager Support**: Works with both npm and yarn
-- ✅ **Matrix Build Support**: Tests across 6 platform combinations
-- ✅ **Smart Caching**: Automatic dependency cache optimization
-- ✅ **Build Artifacts**: Automatic artifact upload and retention
-- ✅ **Graceful Script Handling**: Safely handles missing optional scripts
-- ✅ **Rich Summary Reports**: Detailed workflow summaries in GitHub UI
-- ✅ **Monorepo Ready**: Configurable working directories
-- ✅ **Security Hardening**: Step Security runner hardening included
-- ✅ **Modern Actions**: Uses latest GitHub Actions versions
-
-## Complete Example
-
-```yaml
-name: CI/CD Pipeline
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-  release:
-    types: [published]
-
-jobs:
-  test-and-build:
-    permissions:
-      contents: write
-    uses: soumeh01/test_ts_app/.github/workflows/build-and-verify.yml@main
-    with:
-      package-manager: 'npm'
-      node-version: '20.18.0'
-      build-command: 'npm run build'
-      test-command: 'npm test'
-      lint-command: 'npm run lint'
-      package-command: 'npm run package'
+```json
+[
+  {
+    "platform": "ubuntu-22.04",
+    "arch": "amd64"
+  },
+  {
+    "platform": "ubuntu-24.04",
+    "arch": "amd64"
+  },
+  {
+    "platform": "ubuntu-24.04",
+    "arch": "arm64"
+  },
+  {
+    "platform": "windows-2022",
+    "arch": "amd64"
+  },
+  {
+    "platform": "windows-2022",
+    "arch": "arm64"
+  },
+  {
+    "platform": "macos-13",
+    "arch": "amd64"
+  },
+  {
+    "platform": "macos-14",
+    "arch": "arm64"
+  },
+  {
+    "platform": "macos-15",
+    "arch": "arm64"
+  }
+]
 ```
 
-## Troubleshooting
+## Required Inputs
 
-### Lockfile Issues
+| Input | Required | Description |
+|-------|----------|-------------|
+| `platform-matrix-file` | ✅ | Path to JSON file containing platform matrix |
 
-If you encounter cache misses or installation errors:
+## Optional Inputs
 
-1. Ensure your lockfile is committed to version control
-2. Use `npm ci` or `yarn --frozen-lockfile` locally before committing
-3. Check that lockfile and package.json are in sync
+| Input | Default | Description |
+|-------|---------|-------------|
+| `node-version-file` | `./package.json` | Path to package.json file for Node.js version detection |
+| `package-manager` | `npm` | Package manager to use (npm or yarn) with auto-detection |
+| `working-directory` | `.` | Working directory for the build |
+| `build-command` | `build` | npm/yarn script name for building |
+| `test-command` | `test` | npm/yarn script name for testing |
+| `lint-command` | `lint` | npm/yarn script name for linting |
+| `enable-qlty` | `false` | Enable Qlty coverage upload (requires QLTY_COVERAGE_TOKEN) |
 
-### Monorepo Considerations
+## Workflow Features
 
-- Use `working-directory` to target specific packages
-- Consider caching strategies for mono-repos
-- Be mindful of dependency hoisting and version conflicts
+### Automatic Version Management
 
-## Customization
+The workflow automatically manages version numbers based on git tags and event types:
 
-You can extend these workflows by:
+- **Releases**: Uses the release tag version (e.g., `v1.2.3` → `1.2.3`)
+- **Pull Requests**: Creates prerelease versions (e.g., `1.2.3-pr123-g9be1bf9.0`)
+- **Branch Pushes**: Creates branch-specific versions (e.g., `1.2.3-main-5-g9be1bf9.0`)
 
-1. **Adding Custom Scripts**: Update your package.json scripts
-2. **Modifying Matrices**: Provide custom build/test matrices
-3. **Custom Artifacts**: Configure additional artifact uploads
-4. **Environment Variables**: Pass custom environment variables
-5. **Post-Build Actions**: Use additional steps after package generation
+### Package Manager Detection
+
+The workflow includes intelligent package manager handling:
+
+- Detects npm vs yarn automatically
+- Uses appropriate commands for each package manager
+- Handles version setting differences between npm and yarn
+- Supports both package-lock.json and yarn.lock
+
+### Security & Compliance
+
+- **Step Security Hardening**: All jobs use harden-runner for security
+- **Artifact Management**: Proper retention and cleanup of build artifacts
+- **Git Configuration**: Automatic git setup for cross-platform compatibility
+
+### Cross-Platform VSIX Packaging
+
+The workflow builds platform-specific VSIX packages for:
+
+- `win32-x64`, `win32-arm64`
+- `linux-x64`, `linux-arm64`
+- `darwin-arm64`
+
+## Secrets
+
+| Secret | Required | Description |
+|--------|----------|-------------|
+| `QLTY_COVERAGE_TOKEN` | Optional | Required only if `enable-qlty: true` |
+| `PR_TOKEN` | Optional | Required only for release workflows to create version bump PRs |
+
+## Error Handling
+
+### Platform Matrix Validation
+
+If the specified platform matrix file is not found:
+
+```text
+❌ Platform matrix file not found: .github/platform-matrix.json
+💡 Please ensure the file exists in your repository at the specified path.
+```
+
+### JSON Validation
+
+If the platform matrix contains invalid JSON:
+
+```text
+❌ Invalid JSON in platform matrix file
+🔍 JSON validation error: [detailed error message]
+```
+
+### Empty Matrix Protection
+
+If the platform matrix is empty or null:
+
+```text
+❌ Platform matrix is empty or invalid
+```
+
+This ensures that all platform configurations are explicit and prevents accidental usage of unexpected default configurations.
+
+## Debug Logging
+
+The workflow includes comprehensive debug logging for troubleshooting:
+
+- Git repository status and configuration
+- Package manager detection and version info
+- Platform matrix loading and validation
+- Version calculation and setting process
+- Dependency installation details
+- Build and test execution information
+
+Enable debug logging by setting `ACTIONS_STEP_DEBUG: true` in your repository secrets.

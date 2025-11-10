@@ -12,7 +12,7 @@ on:
     inputs:
       node-version-file:
         description: 'package.json file'
-        required: true
+        required: false
         type: string
         default: './package.json'
       package-manager:
@@ -25,23 +25,19 @@ on:
         required: false
         type: string
         default: '.'
-      build-matrix:
+      platform-matrix-file:
+        description: 'Path to JSON file containing platform matrix: [{ "platform": "...", "arch": "..." }]'
+        required: true
         type: string
-        required: false
-        description: 'JSON array of objects: [{ "platform": "...", "arch": "..." }] for build combinations.'
-      test-matrix:
-        type: string
-        required: false
-        description: 'JSON array of objects: [{ "platform": "...", "arch": "..." }] for test combinations.'
       enable-qlty:
         type: boolean
         required: false
         default: false
         description: If true, coverage reports are uploaded to Qlty. Requires QLTY_COVERAGE_TOKEN secret.
-      download-script-name:
-        type: string
-        required: false
-        description: Path to an executable script. If provided, this is run once per platform before packaging. The platform is passed as an argument.
+      # download-script-name:
+      #   type: string
+      #   required: false
+      #   description: Path to an executable script. If provided, this is run once per platform before packaging. The platform is passed as an argument.
 # specific command inputs
       build-command:
         description: 'Build command to run'
@@ -63,12 +59,9 @@ on:
     #   build-success:
     #     description: 'Whether the build was successful'
     #     value: ${{ jobs.build.outputs.build-success }}
-    #   build-matrix-used:
-    #     description: 'The build matrix configuration used'
-    #     value: ${{ jobs.matrix-config.outputs.build-matrix }}
-    #   test-matrix-used:
-    #     description: 'The test matrix configuration used'
-    #     value: ${{ jobs.matrix-config.outputs.test-matrix }}
+    #   platform-matrix-used:
+    #     description: 'The platform matrix configuration used'
+    #     value: ${{ jobs.configure-ci.outputs.platform-matrix }}
 
 defaults:
   run:
@@ -84,7 +77,7 @@ jobs:
     outputs:
       working-dir: ${{ steps.get-working-dir.outputs.dir }}
       has-e2e-tests: ${{ steps.check-e2e-test-command.outputs.has-e2e-script }}
-      default-matrix: ${{ steps.load-default-matrix.outputs.matrix }}
+      platform-matrix: ${{ steps.load-platform-matrix.outputs.matrix }}
     steps:
       - name: Harden the runner (Audit all outbound calls)
         uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
@@ -103,11 +96,50 @@ jobs:
           repository: soumeh01/test_ts_app
           path: ${{ env.WORKFLOW_DIR }}
 
-      - name: Load default platform matrix
-        id: load-default-matrix
+      - name: Load platform matrix
+        id: load-platform-matrix
         run: |
-          matrix=$(cat ${{ env.WORKFLOW_DIR }}/.github/platform-matrix.json | jq -c .)
-          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          # Check directory structure
+          echo "📋 Caller directory contents:"
+          ls -la "${{ env.CALLER_DIR }}" || echo "❌ Failed to list caller directory"
+
+          if [ -d "${{ env.CALLER_DIR }}/.github" ]; then
+            echo "📋 .github directory contents:"
+            ls -la "${{ env.CALLER_DIR }}/.github" || echo "❌ Failed to list .github directory"
+          fi
+
+          # Load platform matrix from caller repository
+          MATRIX_FILE_PATH="${{ env.CALLER_DIR }}/${{ inputs.platform-matrix-file }}"
+          if [ -f "${MATRIX_FILE_PATH}" ]; then
+            echo "📁 Loading platform matrix from: ${{ inputs.platform-matrix-file }}"
+            echo "📋 File contents:"
+            cat "${MATRIX_FILE_PATH}"
+
+            # Validate JSON syntax
+            if ! jq empty "${MATRIX_FILE_PATH}" 2>/dev/null; then
+              echo "❌ Invalid JSON in platform matrix file"
+              echo "🔍 JSON validation error:"
+              jq . "${MATRIX_FILE_PATH}" 2>&1 || true
+              exit 1
+            fi
+
+            matrix=$(cat "${MATRIX_FILE_PATH}" | jq -c .)
+            echo "🔧 Platform matrix (compact): $matrix"
+
+            # Validate matrix structure
+            if [ "$matrix" = "null" ] || [ "$matrix" = "[]" ] || [ -z "$matrix" ]; then
+              echo "❌ Platform matrix is empty or invalid"
+              exit 1
+            fi
+
+            echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+            echo "✅ Platform matrix loaded successfully"
+          else
+            echo "❌ Platform matrix file not found: ${{ inputs.platform-matrix-file }}"
+            echo "💡 Please ensure the file exists in your repository at the specified path."
+            echo "🔍 Searched at: ${MATRIX_FILE_PATH}"
+            exit 1
+          fi
 
       - name: Get working directory
         id: get-working-dir
@@ -136,7 +168,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJson(inputs.test-matrix != '' && inputs.test-matrix || needs.configure-ci.outputs.default-matrix) }}
+        include: ${{ fromJson(needs.configure-ci.outputs.platform-matrix) }}
     runs-on: ${{ matrix.platform }}
     # outputs:
     #   build-success: ${{ steps.build.outcome == 'success' }}
@@ -147,7 +179,10 @@ jobs:
         with:
           egress-policy: audit
 
-      - run: git config --global core.autocrlf false
+      - run: |
+          echo "🔧 Configuring git settings"
+          git config --global core.autocrlf false
+          echo "✅ Git autocrlf set to false"
 
       - name: Checkout repository
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
@@ -173,25 +208,103 @@ jobs:
         run: |
           case ${{ github.event_name }} in
             release)
+              echo "🚀 Processing release event"
               TAG="${{ github.event.release.tag_name }}"
-              ${{ inputs.package-manager }} version --no-git-tag-version --new-version "${TAG#v}"
+              # Package manager specific version setting
+              if [ "${{ inputs.package-manager }}" = "npm" ]; then
+                npm version --no-git-tag-version "${TAG#v}"
+              else
+                yarn version --no-git-tag-version --new-version "${TAG#v}"
+              fi
               ;;
             pull_request)
-              DESCRIBE=$(git describe --tags | grep -Eo 'v[0-9]+\.[0-9]+\.[0-9]+')
-              QUALIFIER=$(git describe --tags | grep -Eo '\-g[0-9a-f]+$')
-              ${{ inputs.package-manager }} version -s --no-git-tag-version --new-version "${DESCRIBE#v}"
-              ${{ inputs.package-manager }} version --no-git-tag-version --prepatch --preid "pr${{ github.event.number }}${QUALIFIER}"
+              echo "🔀 Processing pull request event"
+              RAW_DESCRIBE=$(git describe --tags --always --long)
+              DESCRIBE=$(git describe --tags | grep -Eo 'v[0-9]+\.[0-9]+\.[0-9]+' || echo "")
+              QUALIFIER=$(git describe --tags | grep -Eo '\-g[0-9a-f]+$' || echo "")
+
+              # Get current version from package.json
+              CURRENT_VERSION=$(jq -r ".version" < package.json)
+              if [ -n "${DESCRIBE}" ]; then
+                TARGET_VERSION="${DESCRIBE#v}"
+                # Only update version if different from current
+                if [ "$CURRENT_VERSION" != "$TARGET_VERSION" ]; then
+                  echo "🔧 Setting base version to ${TARGET_VERSION}"
+                  if [ "${{ inputs.package-manager }}" = "npm" ]; then
+                    npm version --no-git-tag-version "${TARGET_VERSION}"
+                  else
+                    yarn version --no-git-tag-version --new-version "${TARGET_VERSION}"
+                  fi
+                else
+                  echo "ℹ️  Version already at ${TARGET_VERSION}, skipping base version update"
+                fi
+                echo "🔧 Adding prerelease identifier"
+                NEW_PRERELEASE_VERSION="${TARGET_VERSION}-pr${{ github.event.number }}${QUALIFIER}.0"
+                if [ "${{ inputs.package-manager }}" = "npm" ]; then
+                  npm version --no-git-tag-version "${NEW_PRERELEASE_VERSION}"
+                else
+                  yarn version --no-git-tag-version --new-version "${NEW_PRERELEASE_VERSION}"
+                fi
+              else
+                NEW_PRERELEASE_VERSION="${CURRENT_VERSION}-pr${{ github.event.number }}-g$(git rev-parse --short HEAD).0"
+                if [ "${{ inputs.package-manager }}" = "npm" ]; then
+                  npm version --no-git-tag-version "${NEW_PRERELEASE_VERSION}"
+                else
+                  yarn version --no-git-tag-version --new-version "${NEW_PRERELEASE_VERSION}"
+                fi
+              fi
               ;;
             *)
-              DESCRIBE=$(git describe --tags | grep -Eo 'v[0-9]+\.[0-9]+\.[0-9]+')
-              QUALIFIER=$(git describe --tags | grep -Eo '[0-9]+\-g[0-9a-f]+$')
-              ${{ inputs.package-manager }} version -s --no-git-tag-version --new-version "${DESCRIBE#v}"
-              ${{ inputs.package-manager }} version --no-git-tag-version --prepatch --preid "${{ github.ref_name }}${QUALIFIER}"
+              echo "🔄 Processing other event (push/workflow_dispatch)"
+              RAW_DESCRIBE=$(git describe --tags --always --long)
+              DESCRIBE=$(git describe --tags | grep -Eo 'v[0-9]+\.[0-9]+\.[0-9]+' || echo "")
+              QUALIFIER=$(git describe --tags | grep -Eo '[0-9]+\-g[0-9a-f]+$' || echo "")
+
+              # Get current version from package.json
+              CURRENT_VERSION=$(jq -r ".version" < package.json)
+              if [ -n "${DESCRIBE}" ]; then
+                TARGET_VERSION="${DESCRIBE#v}"
+                # Only update version if different from current
+                if [ "$CURRENT_VERSION" != "$TARGET_VERSION" ]; then
+                  echo "🔧 Setting base version to ${TARGET_VERSION}"
+                  if [ "${{ inputs.package-manager }}" = "npm" ]; then
+                    npm version --no-git-tag-version "${TARGET_VERSION}"
+                  else
+                    yarn version --no-git-tag-version --new-version "${TARGET_VERSION}"
+                  fi
+                else
+                  echo "ℹ️  Version already at ${TARGET_VERSION}, skipping base version update"
+                fi
+
+                echo "🔧 Adding prerelease identifier"
+                NEW_PRERELEASE_VERSION="${TARGET_VERSION}-${{ github.ref_name }}${QUALIFIER}.0"
+                if [ "${{ inputs.package-manager }}" = "npm" ]; then
+                  npm version --no-git-tag-version "${NEW_PRERELEASE_VERSION}"
+                else
+                  yarn version --no-git-tag-version --new-version "${NEW_PRERELEASE_VERSION}"
+                fi
+              else
+                NEW_PRERELEASE_VERSION="${CURRENT_VERSION}-${{ github.ref_name }}-g$(git rev-parse --short HEAD).0"
+                if [ "${{ inputs.package-manager }}" = "npm" ]; then
+                  npm version --no-git-tag-version "${NEW_PRERELEASE_VERSION}"
+                else
+                  yarn version --no-git-tag-version --new-version "${NEW_PRERELEASE_VERSION}"
+                fi
+              fi
               ;;
           esac
+
+          echo "📦 Final package.json version:"
           VERSION="$(jq -r ".version" < package.json)"
-          sed -i "s/## Unreleased/## ${VERSION}/" CHANGELOG.md
           echo "Version is ${VERSION}"
+
+          echo "📝 Updating CHANGELOG.md"
+          if [ -f "CHANGELOG.md" ]; then
+            sed -i "s/## Unreleased/## ${VERSION}/" CHANGELOG.md
+            echo "✅ CHANGELOG.md updated"
+          else
+            echo "⚠️  CHANGELOG.md not found"
+          fi
 
       - name: Create version bump patch
         if: |
@@ -213,10 +326,24 @@ jobs:
       - name: Install dependencies
         working-directory: ./${{ inputs.working-directory }}
         run: |
+          echo "📦 Installing dependencies with ${{ inputs.package-manager }}"
+          echo "Working directory: $(pwd)"
+          echo "Package manager: ${{ inputs.package-manager }}"
+          
           if [ "${{ inputs.package-manager }}" = "npm" ]; then
+            echo "🔍 npm version: $(npm --version)"
+            echo "🔍 node version: $(node --version)"
+            echo "📋 package.json exists: $([ -f package.json ] && echo 'yes' || echo 'no')"
+            echo "📋 package-lock.json exists: $([ -f package-lock.json ] && echo 'yes' || echo 'no')"
             npm ci
+            echo "✅ npm ci completed"
           else
+            echo "🔍 yarn version: $(yarn --version)"
+            echo "🔍 node version: $(node --version)"
+            echo "📋 package.json exists: $([ -f package.json ] && echo 'yes' || echo 'no')"
+            echo "📋 yarn.lock exists: $([ -f yarn.lock ] && echo 'yes' || echo 'no')"
             yarn --frozen-lockfile --prefer-offline --ignore-scripts
+            echo "✅ yarn install completed"
           fi
 
       - name: Remove badges
@@ -227,7 +354,14 @@ jobs:
 
       - name: Lint
         working-directory: ./${{ inputs.working-directory }}
-        run: ${{ inputs.package-manager }} run ${{ inputs.lint-command }}
+        run: |
+          echo "🔍 Starting lint process"
+          echo "Working directory: $(pwd)"
+          echo "Lint command: ${{ inputs.package-manager }} run ${{ inputs.lint-command }}"
+          
+          echo "🚀 Executing lint command..."
+          ${{ inputs.package-manager }} run ${{ inputs.lint-command }}
+          echo "✅ Lint completed successfully"
 
       # - name: Download tool dependencies (for universal VSIX)
       #   if: ${{ inputs.download-script-name != '' }}
@@ -237,7 +371,24 @@ jobs:
       - name: Run build
         id: build
         working-directory: ./${{ inputs.working-directory }}
-        run: ${{ inputs.package-manager }} run ${{ inputs.build-command }}
+        run: |
+          echo "🔨 Starting build process"
+          echo "Working directory: $(pwd)"
+          echo "Build command: ${{ inputs.package-manager }} run ${{ inputs.build-command }}"
+          echo "Package manager: ${{ inputs.package-manager }}"
+          
+          # Check if build script exists
+          if [ "${{ inputs.package-manager }}" = "npm" ]; then
+            echo "📋 Available npm scripts:"
+            npm run --silent 2>/dev/null || echo "No scripts found"
+          else
+            echo "📋 Available yarn scripts:"
+            yarn run --silent 2>/dev/null || echo "No scripts found"
+          fi
+          
+          echo "🚀 Executing build command..."
+          ${{ inputs.package-manager }} run ${{ inputs.build-command }}
+          echo "✅ Build completed successfully"
 
       - name: Upload dist
         # Used for release assets
@@ -258,7 +409,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJson(inputs.test-matrix != '' && inputs.test-matrix || needs.configure-ci.outputs.default-matrix) }}
+        include: ${{ fromJson(needs.configure-ci.outputs.platform-matrix) }}
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Harden the runner (Audit all outbound calls)
