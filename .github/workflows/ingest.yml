@@ -1,0 +1,23 @@
+name: Ingest CI metrics (buffered)
+on:
+  repository_dispatch:
+    types: [ci_metrics]
+
+jobs:
+  stash:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write payload to file
+        run: |
+          mkdir -p incoming
+          cat > incoming/metric.json <<'JSON'
+          ${{ toJson(github.event.client_payload) }}
+          JSON
+
+      - name: Upload as artifact (short-lived)
+        uses: actions/upload-artifact@v5
+        with:
+          # Include repo & run_id in the name for easy dedupe
+          name: ci-metric-${{ github.event.client_payload.metrics.repo }}-${{ github.event.client_payload.metrics.run_id }}
+          path: incoming/metric.json
+          retention-days: 3

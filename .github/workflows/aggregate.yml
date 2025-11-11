@@ -1,0 +1,171 @@
+name: Aggregate CI metrics (nightly)
+on:
+  schedule: [{ cron: "15 2 * * *" }]   # daily 02:15 UTC
+  workflow_dispatch:
+
+jobs:
+  aggregate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: python -m pip install --upgrade pip requests
+
+      - name: Merge artifacts -> history + dashboard
+        env:
+          GH_TOKEN: ${{ secrets.METRICS_PAT }}   # GitHub App or PAT with repo:read + actions:read + actions:write for deletions
+          OWNER: org
+          REPO: ci-metrics
+        run: |
+          python - <<'PY'
+          import os, sys, json, time, io, zipfile, requests, datetime, html, re
+
+          GH = os.environ["GH_TOKEN"]
+          OWNER, REPO = os.environ["OWNER"], os.environ["REPO"]
+          api = f"https://api.github.com/repos/{OWNER}/{REPO}"
+          H = {"Authorization": f"Bearer {GH}", "Accept": "application/vnd.github+json"}
+
+          # 1) List all repo artifacts, filter ours (name starts with 'ci-metric-')
+          arts = []
+          url = f"{api}/actions/artifacts?per_page=100"
+          while url:
+            r = requests.get(url, headers=H); r.raise_for_status()
+            j = r.json(); arts += j.get("artifacts", [])
+            # pagination
+            nxt = None
+            if 'link' in r.headers:
+              for part in r.headers['link'].split(','):
+                if 'rel="next"' in part:
+                  nxt = part[part.find('<')+1:part.find('>')]
+            url = nxt
+
+          ours = [a for a in arts if a["name"].startswith("ci-metric-") and not a["expired"]]
+          if not ours:
+            print("No artifacts to process.")
+          os.makedirs("state", exist_ok=True)
+          hist_path = "state/history.ndjson"
+
+          # ensure file exists
+          open(hist_path, "a", encoding="utf-8").close()
+
+          # dedupe keys already in history: (repo, workflow, run_id)
+          seen = set()
+          with open(hist_path, "r", encoding="utf-8") as f:
+            for line in f:
+              if not line.strip(): continue
+              try:
+                rec = json.loads(line)
+                m = rec["metrics"]
+                seen.add((m["repo"], rec["workflow"], str(m["run_id"])))
+              except Exception:
+                pass
+
+          processed_ids = []
+
+          # 2) Download & append
+          for a in ours:
+            # name encodes repo + run_id, but read the json for authoritative values
+            dl = a["archive_download_url"]
+            zr = requests.get(dl, headers=H); zr.raise_for_status()
+            z = zipfile.ZipFile(io.BytesIO(zr.content))
+            with z.open("metric.json") as f:
+              payload = json.loads(f.read().decode("utf-8"))
+            m = payload["metrics"]
+            key = (m["repo"], payload["workflow"], str(m["run_id"]))
+            if key in seen:
+              processed_ids.append(a["id"])
+              continue
+            seen.add(key)
+
+            payload["received_at"] = datetime.datetime.utcnow().isoformat()+"Z"
+            with open(hist_path, "a", encoding="utf-8") as out:
+              out.write(json.dumps(payload) + "\n")
+            processed_ids.append(a["id"])
+
+          # 3) Build latest snapshot
+          latest = {}
+          def parse_dt(s):
+            try:
+              return datetime.datetime.fromisoformat(s.replace("Z","+00:00"))
+            except Exception: return datetime.datetime.min
+
+          with open(hist_path, "r", encoding="utf-8") as f:
+            for line in f:
+              if not line.strip(): continue
+              rec = json.loads(line)
+              m = rec["metrics"]
+              k = (m["repo"], rec["workflow"])
+              cur = latest.get(k)
+              if (cur is None) or (parse_dt(m["build_job"]["last_run"]) > parse_dt(cur["metrics"]["build_job"]["last_run"])):
+                latest[k] = rec
+
+          items = []
+          for (repo, wf), rec in sorted(latest.items()):
+            m = rec["metrics"]
+            items.append({
+              "repo": repo,
+              "workflow": wf,
+              "last_run": (m["build_job"]["last_run"] or "")[:10],
+              "status": (m["build_job"]["status"] or "").lower(),
+              "passed": bool(m["build_job"]["passed"]),
+              "cmsis_toolbox_version": (m.get("cmsis_toolbox") or {}).get("version"),
+              "run_url": m.get("run_url")
+            })
+
+          with open("aggregate.json","w",encoding="utf-8") as f:
+            json.dump({"generated_at": datetime.datetime.utcnow().isoformat()+"Z","items":items}, f, indent=2)
+
+          # 4) Render minimal HTML
+          def esc(x): return html.escape(str(x or ""))
+          rows = "\n".join(
+            "<tr>"
+            f"<td><code>{esc(i['repo'])}</code></td>"
+            f"<td>{esc(i['workflow'])}</td>"
+            f"<td>{esc(i['last_run'])}</td>"
+            f"<td><code>{esc(i['status'])}</code></td>"
+            f"<td>{'✅' if i['passed'] else '❌'}</td>"
+            f"<td><code>{esc(i.get('cmsis_toolbox_version','-'))}</code></td>"
+            f"<td>{('<a href=\"'+esc(i['run_url'])+'\">run</a>') if i.get('run_url') else '-'}</td>"
+            "</tr>" for i in items
+          )
+          html_doc = f"""<!doctype html><meta charset="utf-8">
+          <title>CI Monitor Dashboard</title>
+          <style>
+            body {{ font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; padding: 1rem; }}
+            table {{ border-collapse: collapse; width: 100%; }}
+            th, td {{ border: 1px solid #e5e7eb; padding: 8px; }}
+            th {{ background: #f3f4f6; text-align: left; }}
+            tr:nth-child(even) {{ background: #fafafa; }}
+            code {{ background: #f6f8fa; padding: 2px 4px; border-radius: 4px; }}
+          </style>
+          <h1>CI Monitor Dashboard</h1>
+          <p><em>Nightly aggregation of pushed metrics.</em></p>
+          <table><thead>
+            <tr><th>Repo</th><th>Workflow</th><th>Last run</th><th>Status</th><th>Passed</th><th>CMSIS Toolbox</th><th>Details</th></tr>
+          </thead><tbody>{rows}</tbody></table>"""
+          with open("dashboard.html","w",encoding="utf-8") as f:
+            f.write(html_doc)
+
+          # 5) Delete processed artifacts to keep storage clean
+          for aid in processed_ids:
+            try:
+              requests.delete(f"{api}/actions/artifacts/{aid}", headers=H).raise_for_status()
+            except Exception as e:
+              print("Failed to delete artifact", aid, e)
+          PY
+
+      - name: Commit once
+        run: |
+          git config user.name "ci-metrics-bot"
+          git config user.email "ci-metrics-bot@users.noreply.github.com"
+          git add state/history.ndjson aggregate.json dashboard.html
+          git commit -m "chore: nightly metrics aggregation" || echo "no changes"
+          git push || true
