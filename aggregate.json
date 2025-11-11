@@ -1,0 +1,23 @@
+{
+  "generated_at": "2025-11-11T14:00:42.706280Z",
+  "items": [
+    {
+      "repo": "Open-CMSIS-Pack/STM32H743I-EVAL_BSP",
+      "workflow": "Test-Examples: Build",
+      "last_run": "2025-11-11",
+      "status": "success",
+      "passed": true,
+      "cmsis_toolbox_version": "2.12.0",
+      "cmsis_toolbox_tool": "cmsis-toolbox"
+    },
+    {
+      "repo": "Open-CMSIS-Pack/csolution-examples",
+      "workflow": "CubeMX: Test Build",
+      "last_run": "2025-11-11",
+      "status": "success",
+      "passed": true,
+      "cmsis_toolbox_version": "2.12.0",
+      "cmsis_toolbox_tool": "cmsis-toolbox"
+    }
+  ]
+}

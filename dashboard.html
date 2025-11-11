@@ -1,0 +1,56 @@
+<!doctype html><meta charset="utf-8">
+<title>CI Monitor Dashboard</title>
+<style>
+  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; padding: 1rem; }
+  table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
+  th, td { border: 1px solid #e5e7eb; padding: 8px; }
+  th { background: #f3f4f6; text-align: left; position: relative; }
+  tr:nth-child(even) { background: #fafafa; }
+  code { background: #f6f8fa; padding: 2px 4px; border-radius: 4px; }
+  input { width: 100%; padding: 4px; box-sizing: border-box; border: 1px solid #d1d5db; border-radius: 4px; }
+  .filter-row input { margin-top: 4px; }
+</style>
+<h1>CI Monitor Dashboard</h1>
+<p><em>Nightly aggregation of pushed metrics.</em></p>
+<table id="metricsTable">
+  <thead>
+    <tr>
+      <th>Repo</th>
+      <th>Workflow</th>
+      <th>Last run</th>
+      <th>Status</th>
+      <th>Passed</th>
+      <th>Tool</th>
+      <th>Version</th>
+    </tr>
+    <tr class="filter-row">
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th><input type="text" id="filterVersion" placeholder="Filter version..."></th>
+    </tr>
+  </thead>
+  <tbody><tr><td><code>Open-CMSIS-Pack/STM32H743I-EVAL_BSP</code></td><td>Test-Examples: Build</td><td>2025-11-11</td><td><code>success</code></td><td>✅</td><td><code>cmsis-toolbox</code></td><td><code>2.12.0</code></td></tr>
+<tr><td><code>Open-CMSIS-Pack/csolution-examples</code></td><td>CubeMX: Test Build</td><td>2025-11-11</td><td><code>success</code></td><td>✅</td><td><code>cmsis-toolbox</code></td><td><code>2.12.0</code></td></tr></tbody>
+</table>
+<script>
+  // Filter functionality for version column only
+  const filterVersion = document.getElementById('filterVersion');
+
+  function filterTable() {
+    const table = document.getElementById('metricsTable');
+    const rows = table.getElementsByTagName('tbody')[0].getElementsByTagName('tr');
+    const filterValue = filterVersion.value.toLowerCase();
+
+    for (let row of rows) {
+      const cells = row.getElementsByTagName('td');
+      const version = cells[6].textContent.toLowerCase();
+      row.style.display = version.includes(filterValue) ? '' : 'none';
+    }
+  }
+
+  filterVersion.addEventListener('keyup', filterTable);
+</script>
