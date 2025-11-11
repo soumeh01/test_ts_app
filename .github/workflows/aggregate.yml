@@ -22,8 +22,8 @@ jobs:
       - name: Merge artifacts -> history + dashboard
         env:
           GH_TOKEN: ${{ secrets.METRICS_PAT }}   # GitHub App or PAT with repo:read + actions:read + actions:write for deletions
-          OWNER: org
-          REPO: ci-metrics
+          OWNER: soumeh01
+          REPO: test_ts_app
         run: |
           python - <<'PY'
           import os, sys, json, time, io, zipfile, requests, datetime, html, re
@@ -56,7 +56,7 @@ jobs:
           # ensure file exists
           open(hist_path, "a", encoding="utf-8").close()
 
-          # dedupe keys already in history: (repo, workflow, run_id)
+          # dedupe keys already in history: (repo, workflow, last_run timestamp)
           seen = set()
           with open(hist_path, "r", encoding="utf-8") as f:
             for line in f:
@@ -64,7 +64,7 @@ jobs:
               try:
                 rec = json.loads(line)
                 m = rec["metrics"]
-                seen.add((m["repo"], rec["workflow"], str(m["run_id"])))
+                seen.add((m["repo"], rec["workflow"], m["build_job"]["last_run"]))
               except Exception:
                 pass
 
@@ -72,14 +72,14 @@ jobs:
 
           # 2) Download & append
           for a in ours:
-            # name encodes repo + run_id, but read the json for authoritative values
+            # name encodes repo but read the json for authoritative values
             dl = a["archive_download_url"]
             zr = requests.get(dl, headers=H); zr.raise_for_status()
             z = zipfile.ZipFile(io.BytesIO(zr.content))
             with z.open("metric.json") as f:
               payload = json.loads(f.read().decode("utf-8"))
             m = payload["metrics"]
-            key = (m["repo"], payload["workflow"], str(m["run_id"]))
+            key = (m["repo"], payload["workflow"], m["build_job"]["last_run"])
             if key in seen:
               processed_ids.append(a["id"])
               continue
@@ -117,7 +117,7 @@ jobs:
               "status": (m["build_job"]["status"] or "").lower(),
               "passed": bool(m["build_job"]["passed"]),
               "cmsis_toolbox_version": (m.get("cmsis_toolbox") or {}).get("version"),
-              "run_url": m.get("run_url")
+              "cmsis_toolbox_tool": (m.get("cmsis_toolbox") or {}).get("tool")
             })
 
           with open("aggregate.json","w",encoding="utf-8") as f:
@@ -132,25 +132,65 @@ jobs:
             f"<td>{esc(i['last_run'])}</td>"
             f"<td><code>{esc(i['status'])}</code></td>"
             f"<td>{'✅' if i['passed'] else '❌'}</td>"
+            f"<td><code>{esc(i.get('cmsis_toolbox_tool','-'))}</code></td>"
             f"<td><code>{esc(i.get('cmsis_toolbox_version','-'))}</code></td>"
-            f"<td>{('<a href=\"'+esc(i['run_url'])+'\">run</a>') if i.get('run_url') else '-'}</td>"
             "</tr>" for i in items
           )
           html_doc = f"""<!doctype html><meta charset="utf-8">
           <title>CI Monitor Dashboard</title>
           <style>
             body {{ font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; padding: 1rem; }}
-            table {{ border-collapse: collapse; width: 100%; }}
+            table {{ border-collapse: collapse; width: 100%; margin-top: 1rem; }}
             th, td {{ border: 1px solid #e5e7eb; padding: 8px; }}
-            th {{ background: #f3f4f6; text-align: left; }}
+            th {{ background: #f3f4f6; text-align: left; position: relative; }}
             tr:nth-child(even) {{ background: #fafafa; }}
             code {{ background: #f6f8fa; padding: 2px 4px; border-radius: 4px; }}
+            input {{ width: 100%; padding: 4px; box-sizing: border-box; border: 1px solid #d1d5db; border-radius: 4px; }}
+            .filter-row input {{ margin-top: 4px; }}
           </style>
           <h1>CI Monitor Dashboard</h1>
           <p><em>Nightly aggregation of pushed metrics.</em></p>
-          <table><thead>
-            <tr><th>Repo</th><th>Workflow</th><th>Last run</th><th>Status</th><th>Passed</th><th>CMSIS Toolbox</th><th>Details</th></tr>
-          </thead><tbody>{rows}</tbody></table>"""
+          <table id="metricsTable">
+            <thead>
+              <tr>
+                <th>Repo</th>
+                <th>Workflow</th>
+                <th>Last run</th>
+                <th>Status</th>
+                <th>Passed</th>
+                <th>Tool</th>
+                <th>Version</th>
+              </tr>
+              <tr class="filter-row">
+                <th></th>
+                <th></th>
+                <th></th>
+                <th></th>
+                <th></th>
+                <th></th>
+                <th><input type="text" id="filterVersion" placeholder="Filter version..."></th>
+              </tr>
+            </thead>
+            <tbody>{rows}</tbody>
+          </table>
+          <script>
+            // Filter functionality for version column only
+            const filterVersion = document.getElementById('filterVersion');
+
+            function filterTable() {{
+              const table = document.getElementById('metricsTable');
+              const rows = table.getElementsByTagName('tbody')[0].getElementsByTagName('tr');
+              const filterValue = filterVersion.value.toLowerCase();
+
+              for (let row of rows) {{
+                const cells = row.getElementsByTagName('td');
+                const version = cells[6].textContent.toLowerCase();
+                row.style.display = version.includes(filterValue) ? '' : 'none';
+              }}
+            }}
+
+            filterVersion.addEventListener('keyup', filterTable);
+          </script>"""
           with open("dashboard.html","w",encoding="utf-8") as f:
             f.write(html_doc)
 
