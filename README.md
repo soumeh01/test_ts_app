@@ -1,51 +1,108 @@
-# TypeScript Basic App
+# TypeScript VS Code Extension - Reusable CI/CD Workflows
 
-A comprehensive TypeScript VS Code extension project with advanced CI/CD workflows, cross-platform builds,
-testing, VSIX packaging, and Third-Party Intellectual Property (TPIP) license compliance tracking.
+This repository provides **production-ready reusable GitHub Actions workflows** for building, testing, and packaging TypeScript VS Code extensions across multiple platforms. The repository itself serves as a self-testing infrastructure to validate the workflows.
 
-## Features
+## 🎯 Purpose
 
-- ✅ **TypeScript 5.6.3** with ES2022 target and ES modules configuration
-- ✅ **Jest Testing** with coverage reporting and TypeScript support
-- ✅ **License Compliance** with TPIP (Third-Party IP) tracking and reporting
-- ✅ **Cross-Platform VSIX Packaging** for 6 platform combinations
-- ✅ **GitHub Actions** with matrix builds and reusable workflows
-- ✅ **Dual Package Manager Support** (npm and yarn with auto-detection)
-- ✅ **Security Hardening** with Step Security runner protection
-- ✅ **Modern Tooling** with latest GitHub Actions versions and TSX runtime
+**Primary**: Reusable GitHub Actions workflows for TypeScript VS Code extensions
+**Secondary**: Self-test infrastructure to validate workflow functionality
 
-## Quick Start
+## What This Repository Provides
 
-### Development
+### 1. Reusable Workflows
+
+The main deliverable is the **`build-and-verify.yml`** reusable workflow located in `.github/workflows/`, which provides:
+
+- ✅ **Cross-Platform Builds** - Windows, Linux, macOS (amd64 & arm64)
+- ✅ **Automated Version Management** - Based on git tags for releases, PRs, and branches
+- ✅ **Dual Package Manager Support** - npm and yarn with auto-detection
+- ✅ **VSIX Packaging** - Platform-specific extension packages
+- ✅ **Test Automation** - Unit tests, E2E tests, and coverage reporting
+- ✅ **Security Hardening** - Step Security runner protection
+- ✅ **Artifact Management** - Build outputs, test coverage, and packages
+
+### 2. Self-Test Infrastructure
+
+The rest of the repository serves as a **working example and testing environment**:
+
+- TypeScript 5.6.3 project configuration
+- Jest testing setup with coverage
+- TPIP (Third-Party IP) license compliance tracking
+- Example VSIX packaging configuration
+- Platform matrix configurations
+
+## 📖 Using the Reusable Workflow
+
+### Quick Start
+
+Add this to your repository's workflow file (e.g., `.github/workflows/ci.yml`):
+
+### Quick Start
+
+Add this to your repository's workflow file (e.g., `.github/workflows/ci.yml`):
+
+```yaml
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    uses: soumeh01/test_ts_app/.github/workflows/build-and-verify.yml@main
+    with:
+      platform-matrix-file: '.github/platform-matrix.json'
+      package-manager: 'npm'  # or 'yarn'
+```
+
+### Platform Matrix Configuration
+
+Create `.github/platform-matrix.json` in your repository:
+
+```json
+[
+  {
+    "platform": "windows-2022",
+    "arch": "amd64"
+  },
+  {
+    "platform": "ubuntu-24.04",
+    "arch": "amd64"
+  },
+  {
+    "platform": "macos-14",
+    "arch": "arm64"
+  }
+]
+```
+
+For detailed usage instructions, see [WORKFLOWS.md](.github/WORKFLOWS.md).
+
+## 🛠️ Self-Test Infrastructure Development
+
+If you're contributing to or testing the workflows themselves, use these commands:
 
 ```bash
 # Install dependencies
 npm install
-# or
-yarn install
 
 # Build the project
 npm run build
-# or  
-yarn build
 
 # Run tests with coverage
 npm test
-# or
-yarn test
 
 # Lint code
 npm run lint
-# or
-yarn lint
 
 # Clean build artifacts
 npm run clean
 
-# Package as VSIX (detects package manager automatically)
+# Package as VSIX
 npm run package
-# or
-yarn package
 
 # Update TPIP license tracking
 npm run tpip:update
@@ -54,31 +111,25 @@ npm run tpip:update
 npm run tpip
 ```
 
-### CI/CD Integration
+## 📁 Repository Structure
 
-This project includes production-ready GitHub Actions workflows with platform matrix support:
+### Reusable Workflows (Primary Deliverable)
 
-```yaml
-# .github/workflows/ci.yml
-name: CI/CD Pipeline
-on: [push, pull_request]
-
-jobs:
-  build-and-test:
-    permissions:
-      contents: write
-    uses: soumeh01/test_ts_app/.github/workflows/build-and-verify.yml@main
-    with:
-      package-manager: 'npm'
-      platform-matrix-file: '.github/platform-matrix.json'
+```txt
+.github/
+├── workflows/
+│   ├── build-and-verify.yml      # 🎯 Main reusable workflow
+│   └── self-test.yml             # Self-testing workflow
+├── platform-matrix.json         # Example platform configuration
+└── WORKFLOWS.md                 # Comprehensive workflow documentation
 ```
 
-## Project Structure
+### Self-Test Infrastructure
 
 ```txt
 .
 ├── src/
-│   └── index.ts                      # Extension entry point
+│   └── index.ts                      # Test extension entry point
 ├── dist/                             # Build output
 ├── scripts/
 │   ├── update-tpip.ts                # TPIP license tracking updater
@@ -86,127 +137,95 @@ jobs:
 ├── docs/
 │   ├── third-party-licenses.json     # TPIP license database
 │   └── tpip-header.md                # TPIP report header template
-├── .github/
-│   ├── workflows/
-│   │   ├── build-and-verify.yml      # Reusable CI/CD workflow
-│   │   └── self-test.yml             # Workflow testing
-│   ├── platform-matrix.json         # 6-platform build matrix
-│   ├── dependabot.yml               # Dependency automation
-│   └── WORKFLOWS.md                 # Workflow documentation
-├── package.json                     # Project configuration
+├── package.json                     # Self-test project configuration
 ├── tsconfig.json                    # TypeScript configuration
 ├── jest.config.js                   # Jest testing configuration
 └── tpip.md                          # Generated TPIP license report
 ```
 
-## GitHub Actions Workflows
+## 🔧 Workflow Configuration
 
-### Cross-Platform Support
+### Required Inputs
 
-The project supports building and testing across 6 platform combinations:
+| Input | Description |
+|-------|-------------|
+| `platform-matrix-file` | Path to JSON file containing platform matrix configuration |
 
-- **Windows**: 2022 (amd64, arm64)
-- **Ubuntu**: 24.04 (amd64, arm64)
-- **macOS**: 15-intel (amd64), 14 (arm64)
+### Optional Inputs
 
-### Workflow Features
+| Input | Default | Description |
+|-------|---------|-------------|
+| `package-manager` | `npm` | Package manager (npm or yarn) |
+| `node-version-file` | `./package.json` | Path to package.json for Node version |
+| `working-directory` | `.` | Working directory for build |
+| `build-command` | `build` | npm/yarn script for building |
+| `test-command` | `test` | npm/yarn script for testing |
+| `lint-command` | `lint` | npm/yarn script for linting |
+| `enable-qlty` | `false` | Enable Qlty coverage upload |
 
-- **Matrix Builds**: Parallel execution across platforms
-- **Smart Caching**: Automatic dependency cache optimization
-- **Artifact Management**: Build outputs and test coverage reports
-- **Security Hardening**: Step Security runner protection
-- **Package Manager Detection**: Automatic npm/yarn handling
-- **VSIX Generation**: Platform-specific extension packages
+### Workflow Capabilities
+
+- **Automatic Version Management** - Based on git tags (releases, PRs, branches)
+- **Cross-Platform Builds** - Windows, Linux, macOS (amd64 & arm64)
+- **VSIX Packaging** - Platform-specific packages (win32, linux, darwin)
+- **Test Automation** - Unit tests, E2E tests, coverage reporting
+- **Security Hardening** - Step Security runner protection
+- **Artifact Management** - Build outputs, coverage, packages
 
 See [WORKFLOWS.md](.github/WORKFLOWS.md) for detailed documentation.
 
-## Configuration
+## 📦 Self-Test Infrastructure
 
-### Package.json Scripts
+The self-test infrastructure includes:
 
-Essential scripts for development, CI/CD, and license compliance:
+### Scripts
 
 ```json
 {
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "clean": "git clean -f -x ./node_modules ./dist ./coverage ./.vscode-test *.vsix",
     "test": "jest --coverage",
-    "test:e2e": "echo \"✅ E2E test completed!\"",
     "lint": "echo \"✅ Lint check completed!\"",
-    "package": "npm run build && vsce package --no-dependencies --allow-star-activation --allow-missing-repository --skip-license",
+    "package": "npm run build && vsce package",
     "tpip:update": "tsx scripts/update-tpip docs/third-party-licenses.json",
-    "tpip": "tsx scripts/tpip-reporter.ts --header ./scripts/tpip-header.md docs/third-party-licenses.json ./tpip.md"
+    "tpip": "tsx scripts/tpip-reporter.ts"
   }
 }
 ```
 
-### VS Code Extension Configuration
+### Test Extension Configuration
 
 ```json
 {
   "name": "ts-basic-app",
-  "displayName": "TypeScript Basic App",
-  "version": "1.1.0",
-  "type": "module",
   "engines": {
     "vscode": "^1.63.0",
-    "node": "^20.18.0",
-    "yarn": "^1.22.0"
-  },
-  "activationEvents": ["onStartupFinished"],
-  "contributes": {}
+    "node": "^20.18.0"
+  }
 }
 ```
 
-## TPIP License Compliance
+### TPIP License Compliance
 
-This project includes comprehensive Third-Party Intellectual Property (TPIP) license tracking:
+The self-test infrastructure includes TPIP (Third-Party Intellectual Property) license tracking for demonstration purposes:
 
-### What is TPIP?
-
-TPIP (Third-Party Intellectual Property) tracking ensures legal compliance by:
-
-- Cataloging all runtime dependencies and their licenses
-- Tracking license changes when dependencies are updated
-- Generating compliance reports for legal review
-- Ensuring proper attribution of third-party code
-
-### TPIP Commands
-
-```bash
-# Update TPIP database with current dependencies
-npm run tpip:update
-
-# Generate TPIP license compliance report
-npm run tpip
-```
-
-### TPIP Files
-
-- `docs/third-party-licenses.json` - License database
-- `scripts/tpip-header.md` - Report header template
-- `tpip.md` - Generated compliance report
 - `scripts/update-tpip.ts` - License tracking updater
 - `scripts/tpip-reporter.ts` - Report generator
+- `docs/third-party-licenses.json` - License database
 
-## Dependencies
+## 🤝 Contributing
 
-### Production Dependencies
+Contributions are welcome! This repository serves dual purposes:
 
-Currently none - this is a development template with no runtime dependencies.
+1. **Workflow Improvements**: Enhance the reusable `build-and-verify.yml` workflow
+2. **Testing Infrastructure**: Improve the self-test setup to validate workflow features
 
-### Development Dependencies
-
-- **typescript**: ^5.6.3 - TypeScript compiler with ES2022 support
-- **jest**: ^29.7.0 - Testing framework with coverage reporting
-- **ts-jest**: ^29.1.0 - TypeScript preprocessor for Jest
-- **@types/jest**: ^29.5.0 - TypeScript definitions for Jest
-- **@types/node**: ^20.11.30 - Node.js TypeScript definitions
-- **@vscode/vsce**: ^3.1.0 - VS Code extension packaging tool
-- **yargs**: ^18.0.0 - Command-line argument parsing for TPIP scripts
-- **@types/yargs**: ^17.0.33 - TypeScript definitions for yargs
-
-## License
+## 📄 License
 
 This project is licensed under the MIT License.
+
+## 🔗 Resources
+
+- [Workflow Documentation](.github/WORKFLOWS.md) - Complete workflow usage guide
+- [GitHub Actions Reusable Workflows](https://docs.github.com/en/actions/using-workflows/reusing-workflows)
+- [VS Code Extension API](https://code.visualstudio.com/api)
