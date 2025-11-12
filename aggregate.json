@@ -1,6 +1,15 @@
 {
-  "generated_at": "2025-11-12T03:19:57.742882Z",
+  "generated_at": "2025-11-12T11:18:19.163992Z",
   "items": [
+    {
+      "repo": "Arm-Examples/AVH_CI_Template",
+      "workflow": "Compile and Run",
+      "last_run": "2025-11-12",
+      "status": "",
+      "passed": false,
+      "cmsis_toolbox_version": null,
+      "cmsis_toolbox_tool": null
+    },
     {
       "repo": "Open-CMSIS-Pack/STM32H743I-EVAL_BSP",
       "workflow": "Test-Examples: Build",
