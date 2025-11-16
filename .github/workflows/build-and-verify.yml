@@ -85,13 +85,13 @@ jobs:
           egress-policy: audit
 
       - name: Checkout repository
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@71cf2267d89c5cb81562390fa70a37fa40b1305e # v6.pre.beta
         with:
           repository: ${{ github.event.repository.full_name }}
           path: ${{ env.CALLER_DIR }}
 
       - name: Checkout repository
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@71cf2267d89c5cb81562390fa70a37fa40b1305e # v6.pre.beta
         with:
           repository: soumeh01/test_ts_app
           path: ${{ env.WORKFLOW_DIR }}
@@ -185,7 +185,7 @@ jobs:
           echo "✅ Git autocrlf set to false"
 
       - name: Checkout repository
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@71cf2267d89c5cb81562390fa70a37fa40b1305e # v6.pre.beta
         with:
           submodules: true
           fetch-depth: 0  # Fetch full history for git describe to work
@@ -418,7 +418,7 @@ jobs:
           egress-policy: audit
       - run: git config --global core.autocrlf false
       - name: Checkout repository
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@71cf2267d89c5cb81562390fa70a37fa40b1305e # v6.pre.beta
         with:
           submodules: true
           fetch-depth: 0  # Fetch full history for git describe to work
@@ -473,7 +473,7 @@ jobs:
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/checkout@71cf2267d89c5cb81562390fa70a37fa40b1305e # v6.pre.beta
 
       - name: Download coverage reports from artifacts
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
@@ -507,7 +507,7 @@ jobs:
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/checkout@71cf2267d89c5cb81562390fa70a37fa40b1305e # v6.pre.beta
         with:
           submodules: true
 
@@ -578,7 +578,7 @@ jobs:
           egress-policy: audit
 
       - name: Checkout repository
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@71cf2267d89c5cb81562390fa70a37fa40b1305e # v6.pre.beta
         with:
           submodules: true
           fetch-depth: 0
