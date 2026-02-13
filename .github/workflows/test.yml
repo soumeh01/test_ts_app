@@ -1,27 +1,16 @@
-name: Nightly-test
+name: test-schedule
 
 on:
+  push:
+    branches: [ main ]
   schedule:
-    - cron: '0 5 * * *'
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 jobs:
   build_artifacts:
-    name: Build for ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest, ubuntu-24.04-arm]
-        include:
-          - os: windows-latest
-            artifact_name: pyocd-windows
-          - os: ubuntu-latest
-            artifact_name: pyocd-linux
-          - os: macos-latest
-            artifact_name: pyocd-macos
-          - os: ubuntu-24.04-arm
-            artifact_name: pyocd-linux-arm64
+    name: Build Artifacts
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
