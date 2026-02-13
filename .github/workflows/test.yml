@@ -7,10 +7,12 @@ on:
     branches: [main]
   schedule:
     # Test schedule - triggers at specific times to verify scheduling works
-    - cron: "23 13 13 2 *"  # Feb 13, 2026 at 13:23 UTC
-    - cron: "25 13 13 2 *"  # Feb 13, 2026 at 13:25 UTC
-    - cron: "27 13 13 2 *"  # Feb 13, 2026 at 13:27 UTC
-    - cron: "30 13 13 2 *"  # Feb 13, 2026 at 13:30 UTC
+    - cron: "42 13 13 2 *"  # Feb 13, 2026 at 13:23 UTC
+    - cron: "45 13 13 2 *"  # Feb 13, 2026 at 13:25 UTC
+    - cron: "48 13 13 2 *"  # Feb 13, 2026 at 13:27 UTC
+    - cron: "42 14 13 2 *"  # Feb 13, 2026 at 13:30 UTC
+    - cron: "45 14 13 2 *"  # Feb 13, 2026 at 13:30 UTC
+    - cron: "48 14 13 2 *"  # Feb 13, 2026 at 13:30 UTC
   workflow_dispatch:
 
 jobs:
