@@ -1,0 +1,30 @@
+name: Nightly-test
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  build_artifacts:
+    name: Build for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest, ubuntu-24.04-arm]
+        include:
+          - os: windows-latest
+            artifact_name: pyocd-windows
+          - os: ubuntu-latest
+            artifact_name: pyocd-linux
+          - os: macos-latest
+            artifact_name: pyocd-macos
+          - os: ubuntu-24.04-arm
+            artifact_name: pyocd-linux-arm64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
